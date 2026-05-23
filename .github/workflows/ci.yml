@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build + RLS tests
+    runs-on: ubuntu-latest
+    # ubuntu-latest runners include a running Docker engine, which the
+    # Testcontainers RLS isolation test needs.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build & test
+        run: ./mvnw -B clean verify

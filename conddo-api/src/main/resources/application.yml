@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: conddo
+
+  # Runtime datasource — connects as the NON-owner app role so RLS applies.
+  datasource:
+    url: ${CONDDO_DB_URL:jdbc:postgresql://localhost:5432/conddo}
+    username: ${CONDDO_DB_APP_USER:app_user}
+    password: ${CONDDO_DB_APP_PASSWORD:app_password}
+    hikari:
+      maximum-pool-size: 10
+      pool-name: conddo-app-pool
+
+  jpa:
+    hibernate:
+      ddl-auto: validate          # schema is owned by Flyway, never by Hibernate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  # Migrations run as the OWNER role; app.tenant_id GUC and RLS are set up here.
+  flyway:
+    enabled: true
+    url: ${CONDDO_DB_URL:jdbc:postgresql://localhost:5432/conddo}
+    user: ${CONDDO_DB_OWNER:conddo_owner}
+    password: ${CONDDO_DB_OWNER_PASSWORD:owner_password}
+    placeholders:
+      app_role: ${CONDDO_DB_APP_USER:app_user}
+
+  data:
+    redis:
+      host: ${CONDDO_REDIS_HOST:localhost}
+      port: ${CONDDO_REDIS_PORT:6379}
+
+# MinIO (object storage)
+conddo:
+  minio:
+    endpoint: ${CONDDO_MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${CONDDO_MINIO_USER:conddo}
+    secret-key: ${CONDDO_MINIO_PASSWORD:conddo_secret_change_me}
+    bucket: ${CONDDO_MINIO_BUCKET:conddo}
+
+server:
+  port: ${CONDDO_API_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-components: always

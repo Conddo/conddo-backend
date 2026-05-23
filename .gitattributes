@@ -1,0 +1,15 @@
+# Normalize line endings: LF in the repository for all text files. This keeps
+# shell scripts (mvnw, *.sh) working on Linux and inside Docker containers,
+# regardless of the committer's OS.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Treat these as binary (no EOL conversion, no diffs).
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary
+*.jar binary

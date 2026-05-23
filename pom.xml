@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.conddo</groupId>
+    <artifactId>conddo-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Conddo.io Parent</name>
+    <description>Conddo.io platform — multi-module backend</description>
+
+    <!--
+      Module separation mirrors the product architecture (PRD §7, §10):
+        conddo-core : Core Platform — multi-tenancy, security, persistence, domain
+        conddo-api  : Spring Boot application — REST API, configuration, wiring
+      Operations / Marketing modules will be added as further modules here.
+    -->
+    <modules>
+        <module>conddo-core</module>
+        <module>conddo-api</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <minio.version>8.5.12</minio.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Internal modules -->
+            <dependency>
+                <groupId>io.conddo</groupId>
+                <artifactId>conddo-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- MinIO is not managed by the Spring Boot BOM -->
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
