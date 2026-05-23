@@ -35,13 +35,30 @@ spring:
       host: ${CONDDO_REDIS_HOST:localhost}
       port: ${CONDDO_REDIS_PORT:6379}
 
-# MinIO (object storage)
 conddo:
+  # MinIO (object storage)
   minio:
     endpoint: ${CONDDO_MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${CONDDO_MINIO_USER:conddo}
     secret-key: ${CONDDO_MINIO_PASSWORD:conddo_secret_change_me}
     bucket: ${CONDDO_MINIO_BUCKET:conddo}
+
+  security:
+    # Access-token signing (RSA-256). Local default = generated dev key pair on
+    # the classpath (conddo-api/src/main/resources/keys, gitignored). Production
+    # overrides CONDDO_JWT_* to point at mounted key files.
+    jwt:
+      public-key: ${CONDDO_JWT_PUBLIC_KEY:classpath:keys/dev_public.pem}
+      private-key: ${CONDDO_JWT_PRIVATE_KEY:classpath:keys/dev_private.pem}
+      issuer: ${CONDDO_JWT_ISSUER:https://conddo.io}
+      access-ttl: ${CONDDO_JWT_ACCESS_TTL:15m}
+    # Authentication tunables (refresh-token lifetime, lockout, cookie flags).
+    auth:
+      refresh-token-ttl: ${CONDDO_REFRESH_TTL:30d}
+      lockout-threshold: ${CONDDO_LOCKOUT_THRESHOLD:5}
+      lockout-base-duration: ${CONDDO_LOCKOUT_BASE:15m}
+      cookie-secure: ${CONDDO_AUTH_COOKIE_SECURE:true}
+      password-reset-ttl: ${CONDDO_PWD_RESET_TTL:1h}
 
 server:
   port: ${CONDDO_API_PORT:8080}

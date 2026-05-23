@@ -1,9 +1,14 @@
 package io.conddo.api.web;
 
+import io.conddo.core.auth.AccountLockedException;
+import io.conddo.core.auth.InvalidCredentialsException;
+import io.conddo.core.auth.InvalidPasswordResetTokenException;
+import io.conddo.core.auth.InvalidRefreshTokenException;
 import io.conddo.core.common.ApiError;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.tenant.TenantContextMissingException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +35,42 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNoTenant(TenantContextMissingException ex) {
         return ResponseEntity.badRequest()
                 .body(ApiResponse.fail(ApiError.of("NO_TENANT", ex.getMessage())));
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidCredentials(InvalidCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(ApiError.of("AUTH_INVALID_CREDENTIALS", ex.getMessage())));
+    }
+
+    @ExceptionHandler(AccountLockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccountLocked(AccountLockedException ex) {
+        return ResponseEntity.status(HttpStatus.LOCKED)
+                .body(ApiResponse.fail(ApiError.of("AUTH_ACCOUNT_LOCKED", ex.getMessage())));
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(ApiError.of("AUTH_INVALID_REFRESH_TOKEN", ex.getMessage())));
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidResetToken(InvalidPasswordResetTokenException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("AUTH_INVALID_RESET_TOKEN", ex.getMessage())));
+    }
+
+    /**
+     * Method-level {@code @PreAuthorize} denials surface as AccessDeniedException
+     * here (web-layer denials are handled earlier by the security filter chain).
+     * Map both to a consistent 403 envelope.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("FORBIDDEN",
+                        "You do not have permission to perform this action")));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -15,5 +15,8 @@ target/
 .env
 infra/.env
 
+# JWT signing keys — generated locally per machine; never commit (prod uses env vars)
+conddo-api/src/main/resources/keys/*.pem
+
 # OS
 .DS_Store
