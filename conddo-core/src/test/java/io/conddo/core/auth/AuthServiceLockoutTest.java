@@ -53,7 +53,7 @@ class AuthServiceLockoutTest {
     private final RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
 
     private final AuthProperties props =
-            new AuthProperties(Duration.ofDays(30), THRESHOLD, BASE_LOCK, true, Duration.ofHours(1));
+            new AuthProperties(Duration.ofDays(30), THRESHOLD, BASE_LOCK, true, Duration.ofHours(1), "Strict");
 
     private AuthService authService;
     private User user;

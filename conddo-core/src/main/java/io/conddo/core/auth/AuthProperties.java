@@ -13,6 +13,8 @@ import java.time.Duration;
  * @param lockoutBaseDuration first lockout window; doubles per extra failure, capped (e.g. 15m)
  * @param cookieSecure        mark the refresh cookie {@code Secure} (true in prod; false for local http)
  * @param passwordResetTtl    lifetime of a password-reset token (e.g. 1h)
+ * @param cookieSameSite      refresh-cookie SameSite: {@code Strict}/{@code Lax}/{@code None}
+ *                            (None — with Secure — is required for a cross-site frontend)
  */
 @ConfigurationProperties(prefix = "conddo.security.auth")
 public record AuthProperties(
@@ -20,6 +22,7 @@ public record AuthProperties(
         int lockoutThreshold,
         Duration lockoutBaseDuration,
         boolean cookieSecure,
-        Duration passwordResetTtl
+        Duration passwordResetTtl,
+        String cookieSameSite
 ) {
 }

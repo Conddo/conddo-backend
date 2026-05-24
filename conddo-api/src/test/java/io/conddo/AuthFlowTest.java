@@ -36,7 +36,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,6 +82,7 @@ class AuthFlowTest {
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("spring.flyway.placeholders.app_role", () -> APP_USER);
         registry.add("conddo.security.auth.cookie-secure", () -> "false");
+        registry.add("conddo.security.cors.allowed-origins", () -> "https://app.conddo.io");
     }
 
     @Autowired
@@ -254,6 +257,16 @@ class AuthFlowTest {
         mockMvc.perform(get("/api/v1/tenants").header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void corsPreflightAllowsConfiguredOriginWithCredentials() throws Exception {
+        mockMvc.perform(options("/api/v1/customers")
+                        .header("Origin", "https://app.conddo.io")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://app.conddo.io"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
 
     @Test

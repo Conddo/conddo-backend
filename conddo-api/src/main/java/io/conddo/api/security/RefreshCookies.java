@@ -20,9 +20,11 @@ public class RefreshCookies {
     private static final String PATH = "/auth";
 
     private final boolean secure;
+    private final String sameSite;
 
     public RefreshCookies(AuthProperties properties) {
         this.secure = properties.cookieSecure();
+        this.sameSite = properties.cookieSameSite();
     }
 
     public ResponseCookie issue(String rawToken, Duration maxAge) {
@@ -38,7 +40,7 @@ public class RefreshCookies {
         return ResponseCookie.from(COOKIE_NAME, value)
                 .httpOnly(true)
                 .secure(secure)
-                .sameSite("Strict")
+                .sameSite(sameSite)
                 .path(PATH);
     }
 }
