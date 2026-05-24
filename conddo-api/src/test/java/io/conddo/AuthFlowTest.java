@@ -800,6 +800,50 @@ class AuthFlowTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void staffInviteListRoleChangeAndDeactivate() throws Exception {
+        String token = signupVerticalAndLogin("staff-a", "owner@staff.test", "general");
+
+        // The owner is the only user initially, active after logging in.
+        mockMvc.perform(get("/api/v1/staff").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].role").value("TENANT_ADMIN"))
+                .andExpect(jsonPath("$.data[0].status").value("active"));
+
+        // Invite a staff member -> created as "invited"; an invite email is sent.
+        MvcResult invited = mockMvc.perform(post("/api/v1/staff/invite").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", "mary@staff.test", "role", "STAFF"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("invited"))
+                .andExpect(jsonPath("$.data.role").value("STAFF"))
+                .andReturn();
+        String staffId = objectMapper.readTree(invited.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+        verify(emailSender).send(eq("mary@staff.test"), anyString(), anyString());
+
+        // Promote to admin, then deactivate.
+        mockMvc.perform(patch("/api/v1/staff/" + staffId).header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("role", "TENANT_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("TENANT_ADMIN"));
+        mockMvc.perform(patch("/api/v1/staff/" + staffId).header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("active", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("inactive"));
+
+        // The role catalogue is available, and duplicate invites are rejected.
+        mockMvc.perform(get("/api/v1/staff/roles").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+        mockMvc.perform(post("/api/v1/staff/invite").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", "mary@staff.test", "role", "STAFF"))))
+                .andExpect(status().isConflict());
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {

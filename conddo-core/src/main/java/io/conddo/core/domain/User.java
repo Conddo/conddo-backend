@@ -102,6 +102,18 @@ public class User implements LockableAccount {
         this.passwordHash = newPasswordHash;
     }
 
+    /** Changes the user's role (§11.10 staff management). */
+    public void changeRole(String role) {
+        if (role != null && !role.isBlank()) {
+            this.role = role;
+        }
+    }
+
+    /** Activates or deactivates the account (§11.10). A deactivated user cannot log in. */
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
     public void markPhoneVerified() {
         this.phoneVerified = true;
     }

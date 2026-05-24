@@ -460,11 +460,14 @@ build**. Build these per module; nothing here breaks the §3 RLS contract.
   `GET /api/v1/verticals/{id}/config` 🆕 → the vertical's order-pipeline stages,
   measurement fields, and website sections. The dashboard's order stages,
   measurement labels, etc. are **vertical-specific**, not hardcoded.
-  - 📋 **The canonical vertical → capability-tool matrix (7 verticals × plan tier)
-    is in `VERTICALS.md`** (this repo) — part of **Platform Architecture v1.0**,
-    which moves to a module/capability-tool model (YAML-defined verticals, Module
-    Registry/Factory, event bus, manifest-driven frontend). v1.0 §14–20 are not yet
-    captured here; until then `VERTICALS.md` is the authoritative tool/vertical list.
+  - 📋 **Platform Architecture v1.0 — full §1–20** captured in `ARCHITECTURE.md` (this
+    repo; canonical master = `conddo_architecture.md` at the workspace root): module/
+    capability-tool model, Module Registry/Factory, event bus, YAML vertical defs, RLS,
+    gateway, **manifest-driven frontend** (`GET /api/v1/registry/manifests?modules=…`),
+    Maven layout, Docker/infra, and the mandatory agent rules (§20). 7-vertical × plan-tier
+    tool matrix in `VERTICALS.md`. Where v1.0 and this §11 REST contract disagree,
+    **ARCHITECTURE.md wins**; the live backend currently implements an earlier subset
+    (auth/me/customers/orders/dashboard-summary/verticals-config).
 - **Shared cross-cutting endpoints** (used by many pages) are in §11.12.
 
 ---
