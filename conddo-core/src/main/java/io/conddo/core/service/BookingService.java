@@ -199,7 +199,7 @@ public class BookingService {
     }
 
     /** Sensible defaults when a tenant has not configured hours: Mon–Fri 09–17. */
-    private static Map<String, Object> defaultWorkingHours() {
+    static Map<String, Object> defaultWorkingHours() {
         Map<String, Object> hours = new LinkedHashMap<>();
         for (String day : List.of("mon", "tue", "wed", "thu", "fri")) {
             hours.put(day, Map.of("open", true, "start", "09:00", "end", "17:00"));

@@ -708,6 +708,40 @@ class AuthFlowTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void publicSelfBookCreatesPendingBookingVisibleToOwner() throws Exception {
+        String token = signupVerticalAndLogin("book-pub", "owner@bookpub.test", "general");
+
+        // The public booking page resolves by the (default) tenant slug — no auth.
+        mockMvc.perform(get("/api/v1/public/book/book-pub"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.business").value("book-pub Business"))
+                .andExpect(jsonPath("$.data.slotDurationMinutes").value(60));
+
+        // A client self-books -> a pending booking is created without authenticating.
+        LocalDate monday = LocalDate.now(ZoneOffset.UTC).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate day = monday.plusDays(2);
+        OffsetDateTime start = day.atTime(11, 0).atOffset(ZoneOffset.UTC);
+        mockMvc.perform(post("/api/v1/public/book/book-pub").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "customerName", "Walk-in Wale", "customerPhone", "+2348030000123",
+                                "service", "Consultation", "start", start.toString()))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("pending"));
+
+        // The owner sees the pending booking on their (RLS-scoped) calendar.
+        mockMvc.perform(get("/api/v1/bookings").param("from", day.toString()).param("to", day.toString())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].customer").value("Walk-in Wale"))
+                .andExpect(jsonPath("$.data[0].status").value("pending"));
+
+        // An unknown / disabled slug is a 404.
+        mockMvc.perform(get("/api/v1/public/book/no-such-business"))
+                .andExpect(status().isNotFound());
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {

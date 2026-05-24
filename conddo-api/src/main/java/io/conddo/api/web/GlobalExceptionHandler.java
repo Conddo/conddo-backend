@@ -11,6 +11,7 @@ import io.conddo.core.auth.RegistrationNotFoundException;
 import io.conddo.core.common.ApiError;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.common.NotFoundException;
+import io.conddo.core.common.RateLimitExceededException;
 import io.conddo.core.tenant.TenantContextMissingException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -106,6 +107,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.fail(ApiError.of("FORBIDDEN",
                         "You do not have permission to perform this action")));
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRateLimited(RateLimitExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.fail(ApiError.of("RATE_LIMITED", ex.getMessage())));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
