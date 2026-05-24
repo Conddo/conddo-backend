@@ -13,6 +13,7 @@ import org.hibernate.type.SqlTypes;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -49,6 +50,25 @@ public class Tenant {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "setup_dismissed")
     private List<String> setupDismissed = new ArrayList<>();
+
+    // ----- booking config (§11.5) — tenant-level, publicly resolvable ---------
+
+    /** Working hours by weekday, e.g. {@code {"mon":{"open":true,"start":"08:00","end":"18:00"}, ...}}. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "working_hours")
+    private Map<String, Object> workingHours;
+
+    @Column(name = "slot_duration_minutes", nullable = false)
+    private int slotDurationMinutes = 60;
+
+    @Column(name = "buffer_minutes", nullable = false)
+    private int bufferMinutes = 0;
+
+    @Column(name = "booking_link_slug")
+    private String bookingLinkSlug;
+
+    @Column(name = "booking_link_enabled", nullable = false)
+    private boolean bookingLinkEnabled = true;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -104,6 +124,55 @@ public class Tenant {
         if (key != null && !key.isBlank() && !setupDismissed.contains(key)) {
             setupDismissed.add(key);
         }
+    }
+
+    public Map<String, Object> getWorkingHours() {
+        return workingHours;
+    }
+
+    public void setWorkingHours(Map<String, Object> workingHours) {
+        this.workingHours = workingHours;
+    }
+
+    public int getSlotDurationMinutes() {
+        return slotDurationMinutes;
+    }
+
+    public void setSlotDurationMinutes(int slotDurationMinutes) {
+        if (slotDurationMinutes > 0) {
+            this.slotDurationMinutes = slotDurationMinutes;
+        }
+    }
+
+    public int getBufferMinutes() {
+        return bufferMinutes;
+    }
+
+    public void setBufferMinutes(int bufferMinutes) {
+        if (bufferMinutes >= 0) {
+            this.bufferMinutes = bufferMinutes;
+        }
+    }
+
+    public String getBookingLinkSlug() {
+        return bookingLinkSlug;
+    }
+
+    public void setBookingLinkSlug(String bookingLinkSlug) {
+        this.bookingLinkSlug = bookingLinkSlug;
+    }
+
+    public boolean isBookingLinkEnabled() {
+        return bookingLinkEnabled;
+    }
+
+    public void setBookingLinkEnabled(boolean bookingLinkEnabled) {
+        this.bookingLinkEnabled = bookingLinkEnabled;
+    }
+
+    /** The effective self-book slug — the configured one, or the tenant slug. */
+    public String effectiveBookingSlug() {
+        return bookingLinkSlug != null ? bookingLinkSlug : slug;
     }
 
     public OffsetDateTime getCreatedAt() {

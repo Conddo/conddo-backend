@@ -31,6 +31,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Map;
 
@@ -622,6 +627,85 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.data.completed").value(6))
                 .andExpect(jsonPath("$.data.steps[4].key").value("set_up_website"))
                 .andExpect(jsonPath("$.data.steps[4].done").value(true));
+    }
+
+    @Test
+    void bookingLifecycleAvailabilityLinkAndPerformance() throws Exception {
+        String token = signupVerticalAndLogin("book-a", "owner@book.test", "general");
+        String customerId = createCustomerReturningId(token, "Temi Johnson");
+
+        // A slot midweek (computed relative to the current week so "this week" holds).
+        LocalDate monday = LocalDate.now(ZoneOffset.UTC).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate day = monday.plusDays(2);
+        OffsetDateTime start = day.atTime(10, 0).atOffset(ZoneOffset.UTC);
+
+        // Create a booking (end auto-derived from the 60-minute default slot).
+        String createBody = objectMapper.writeValueAsString(Map.of(
+                "customerId", customerId, "service", "Consultation",
+                "start", start.toString(), "amount", 50000, "mode", "virtual"));
+        MvcResult created = mockMvc.perform(post("/api/v1/bookings").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(createBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.customer").value("Temi Johnson"))
+                .andExpect(jsonPath("$.data.status").value("confirmed"))
+                .andExpect(jsonPath("$.data.mode").value("virtual"))
+                .andReturn();
+        String bookingId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        // Lands on the calendar for that day.
+        mockMvc.perform(get("/api/v1/bookings").param("from", day.toString()).param("to", day.toString())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].service").value("Consultation"));
+
+        // Weekly performance reflects the one (non-cancelled) booking + its amount.
+        MvcResult perf = mockMvc.perform(get("/api/v1/bookings/performance").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.bookingsThisWeek").value(1))
+                .andReturn();
+        JsonNode revenue = objectMapper.readTree(perf.getResponse().getContentAsString())
+                .path("data").path("revenueProjected");
+        assertEquals(0, revenue.decimalValue().compareTo(new BigDecimal("50000")), "projected revenue");
+
+        // Reschedule via PATCH.
+        OffsetDateTime moved = day.plusDays(1).atTime(12, 0).atOffset(ZoneOffset.UTC);
+        mockMvc.perform(patch("/api/v1/bookings/" + bookingId).header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "start", moved.toString(), "end", moved.plusHours(1).toString()))))
+                .andExpect(status().isOk());
+
+        // Availability: defaults, then update slot/buffer.
+        mockMvc.perform(get("/api/v1/bookings/availability").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.slotDurationMinutes").value(60));
+        mockMvc.perform(put("/api/v1/bookings/availability").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("slotDurationMinutes", 30, "bufferMinutes", 15))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.slotDurationMinutes").value(30))
+                .andExpect(jsonPath("$.data.bufferMinutes").value(15));
+
+        // Shareable link: default slug = tenant slug; regenerate derives a new one.
+        mockMvc.perform(get("/api/v1/bookings/link").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.slug").value("book-a"))
+                .andExpect(jsonPath("$.data.enabled").value(true))
+                .andExpect(jsonPath("$.data.url").value("conddo.io/book/book-a"));
+        MvcResult regen = mockMvc.perform(post("/api/v1/bookings/link").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String newSlug = objectMapper.readTree(regen.getResponse().getContentAsString())
+                .path("data").path("slug").asText();
+        assertTrue(newSlug.startsWith("book-a-"), "regenerated slug keeps the tenant prefix: " + newSlug);
+
+        // Cancel (delete) -> gone.
+        mockMvc.perform(delete("/api/v1/bookings/" + bookingId).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/bookings/" + bookingId).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNotFound());
     }
 
     // ----- helpers ---------------------------------------------------------
