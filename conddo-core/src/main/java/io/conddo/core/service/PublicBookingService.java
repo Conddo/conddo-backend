@@ -30,13 +30,16 @@ public class PublicBookingService {
 
     private final TenantRepository tenantRepository;
     private final BookingRepository bookingRepository;
+    private final NotificationFeedService notificationFeedService;
     private final TenantSession tenantSession;
     private final Clock clock;
 
     public PublicBookingService(TenantRepository tenantRepository, BookingRepository bookingRepository,
+                                NotificationFeedService notificationFeedService,
                                 TenantSession tenantSession, Clock clock) {
         this.tenantRepository = tenantRepository;
         this.bookingRepository = bookingRepository;
+        this.notificationFeedService = notificationFeedService;
         this.tenantSession = tenantSession;
         this.clock = clock;
     }
@@ -67,7 +70,12 @@ public class PublicBookingService {
         Booking booking = new Booking(tenant.getId(), null, customerName, service, start, end, "in_person", "pending");
         booking.setNotes(phone == null || phone.isBlank()
                 ? "Self-booked via link" : "Self-booked via link. Contact: " + phone);
-        return bookingRepository.save(booking);
+        booking = bookingRepository.save(booking);
+
+        // Notify the owner of the incoming request (§11.12 bell feed).
+        notificationFeedService.create("BOOKING", "New booking request",
+                customerName + (service == null ? "" : " — " + service), null);
+        return booking;
     }
 
     private Tenant resolve(String slug) {

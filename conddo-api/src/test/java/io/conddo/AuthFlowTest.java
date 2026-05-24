@@ -942,6 +942,52 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.data.total").value(1));
     }
 
+    @Test
+    void globalSearchAndNotificationsBellFeed() throws Exception {
+        String token = signupVerticalAndLogin("xc-a", "owner@xc.test", "general");
+        String customerId = createCustomerReturningId(token, "Zainab Bello");
+        createOrder(token, customerId, "Kaftan", 40000);
+
+        // Global search finds the customer by name and the order by service.
+        mockMvc.perform(get("/api/v1/search").param("q", "zainab").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.customers.length()").value(1))
+                .andExpect(jsonPath("$.data.customers[0].label").value("Zainab Bello"));
+        mockMvc.perform(get("/api/v1/search").param("q", "kaftan").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orders.length()").value(1));
+
+        // The bell feed starts empty.
+        mockMvc.perform(get("/api/v1/notifications").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unread").value(0))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+
+        // A public self-booking notifies the owner (§11.12 producer).
+        LocalDate monday = LocalDate.now(ZoneOffset.UTC).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        OffsetDateTime start = monday.plusDays(2).atTime(9, 0).atOffset(ZoneOffset.UTC);
+        mockMvc.perform(post("/api/v1/public/book/xc-a").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "customerName", "Walk-in Wale", "service", "Consultation", "start", start.toString()))))
+                .andExpect(status().isCreated());
+
+        MvcResult feed = mockMvc.perform(get("/api/v1/notifications").param("unread", "true")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unread").value(1))
+                .andExpect(jsonPath("$.data.items[0].type").value("BOOKING"))
+                .andReturn();
+        String notifId = objectMapper.readTree(feed.getResponse().getContentAsString())
+                .path("data").path("items").get(0).path("id").asText();
+
+        // Mark it read -> the unread badge clears.
+        mockMvc.perform(post("/api/v1/notifications/" + notifId + "/read").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/notifications").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.unread").value(0));
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {
