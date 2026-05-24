@@ -70,6 +70,39 @@ public class Tenant {
     @Column(name = "booking_link_enabled", nullable = false)
     private boolean bookingLinkEnabled = true;
 
+    // ----- settings (§11.11) — tenant profile/branding/social/location/hours ---
+
+    private String tagline;
+    private String description;
+
+    @Column(name = "contact_email")
+    private String contactEmail;
+
+    @Column(name = "contact_phone")
+    private String contactPhone;
+
+    @Column(name = "primary_color")
+    private String primaryColor;
+
+    @Column(name = "logo_url")
+    private String logoUrl;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "social_handles")
+    private Map<String, Object> socialHandles;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "location")
+    private Map<String, Object> location;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "business_hours")
+    private Map<String, Object> businessHours;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "notification_prefs")
+    private Map<String, Object> notificationPrefs;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -173,6 +206,99 @@ public class Tenant {
     /** The effective self-book slug — the configured one, or the tenant slug. */
     public String effectiveBookingSlug() {
         return bookingLinkSlug != null ? bookingLinkSlug : slug;
+    }
+
+    // ----- settings (§11.11) --------------------------------------------------
+
+    /** Business name is editable from settings; industry (vertical) and slug are not. */
+    public void rename(String name) {
+        if (name != null && !name.isBlank()) {
+            this.name = name;
+        }
+    }
+
+    public void deactivate() {
+        this.status = "INACTIVE";
+    }
+
+    public String getTagline() {
+        return tagline;
+    }
+
+    public void setTagline(String tagline) {
+        this.tagline = tagline;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getContactEmail() {
+        return contactEmail;
+    }
+
+    public void setContactEmail(String contactEmail) {
+        this.contactEmail = contactEmail;
+    }
+
+    public String getContactPhone() {
+        return contactPhone;
+    }
+
+    public void setContactPhone(String contactPhone) {
+        this.contactPhone = contactPhone;
+    }
+
+    public String getPrimaryColor() {
+        return primaryColor;
+    }
+
+    public void setPrimaryColor(String primaryColor) {
+        this.primaryColor = primaryColor;
+    }
+
+    public String getLogoUrl() {
+        return logoUrl;
+    }
+
+    public void setLogoUrl(String logoUrl) {
+        this.logoUrl = logoUrl;
+    }
+
+    public Map<String, Object> getSocialHandles() {
+        return socialHandles;
+    }
+
+    public void setSocialHandles(Map<String, Object> socialHandles) {
+        this.socialHandles = socialHandles;
+    }
+
+    public Map<String, Object> getLocation() {
+        return location;
+    }
+
+    public void setLocation(Map<String, Object> location) {
+        this.location = location;
+    }
+
+    public Map<String, Object> getBusinessHours() {
+        return businessHours;
+    }
+
+    public void setBusinessHours(Map<String, Object> businessHours) {
+        this.businessHours = businessHours;
+    }
+
+    public Map<String, Object> getNotificationPrefs() {
+        return notificationPrefs;
+    }
+
+    public void setNotificationPrefs(Map<String, Object> notificationPrefs) {
+        this.notificationPrefs = notificationPrefs;
     }
 
     public OffsetDateTime getCreatedAt() {

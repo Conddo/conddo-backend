@@ -844,6 +844,60 @@ class AuthFlowTest {
                 .andExpect(status().isConflict());
     }
 
+    @Test
+    void settingsProfileBrandingHoursSocialAndDeactivate() throws Exception {
+        String token = signupVerticalAndLogin("set-a", "owner@set.test", "fashion");
+
+        // Profile reflects signup; industry + subdomain are read-only passthroughs.
+        mockMvc.perform(get("/api/v1/settings/business-profile").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("set-a Business"))
+                .andExpect(jsonPath("$.data.industry").value("fashion"))
+                .andExpect(jsonPath("$.data.subdomain").value("set-a"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        // Update the editable fields; industry stays put.
+        mockMvc.perform(put("/api/v1/settings/business-profile").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Glam Adaeze", "tagline", "Bespoke fashion",
+                                "email", "hello@glam.test", "phone", "+2348030000200"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Glam Adaeze"))
+                .andExpect(jsonPath("$.data.tagline").value("Bespoke fashion"))
+                .andExpect(jsonPath("$.data.email").value("hello@glam.test"))
+                .andExpect(jsonPath("$.data.industry").value("fashion"));
+
+        // Branding.
+        mockMvc.perform(put("/api/v1/settings/branding").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("primaryColor", "#7C3AED", "logoUrl", "https://cdn/x.png"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.primaryColor").value("#7C3AED"));
+
+        // Business hours round-trip (JSONB).
+        mockMvc.perform(put("/api/v1/settings/business-hours").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("mon", Map.of("open", true, "start", "08:00", "end", "18:00")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mon.start").value("08:00"));
+        mockMvc.perform(get("/api/v1/settings/business-hours").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mon.end").value("18:00"));
+
+        // Social handles.
+        mockMvc.perform(put("/api/v1/settings/social-handles").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("instagram", "@glam"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.instagram").value("@glam"));
+
+        // Danger Zone: deactivate the tenant.
+        mockMvc.perform(post("/api/v1/settings/danger/deactivate").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("INACTIVE"));
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {
