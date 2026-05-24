@@ -573,6 +573,57 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.data[0].id").isNotEmpty());
     }
 
+    @Test
+    void dashboardSummaryAndSetupChecklistReflectTenantState() throws Exception {
+        String token = signupVerticalAndLogin("dash-kpi", "owner@dashkpi.test", "fashion");
+
+        // Fresh tenant: business profile + vertical are done, the rest pending -> 2 of 6.
+        mockMvc.perform(get("/api/v1/dashboard/setup-checklist").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(6))
+                .andExpect(jsonPath("$.data.completed").value(2))
+                .andExpect(jsonPath("$.data.steps[2].key").value("add_customer"))
+                .andExpect(jsonPath("$.data.steps[2].done").value(false));
+
+        // Add a customer, an order, and a payment.
+        String customerId = createCustomerReturningId(token, "Chidi Benson");
+        String createBody = objectMapper.writeValueAsString(Map.of(
+                "customerId", customerId, "service", "Senator Suit",
+                "items", List.of(Map.of("description", "Senator Suit", "quantity", 1, "unitPrice", 30000))));
+        MvcResult created = mockMvc.perform(post("/api/v1/orders").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(createBody))
+                .andExpect(status().isCreated()).andReturn();
+        String orderId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+        mockMvc.perform(post("/api/v1/orders/" + orderId + "/payments").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("amount", 30000, "method", "Cash"))))
+                .andExpect(status().isCreated());
+
+        // KPI cards reflect the new data (one pending order, one new customer today).
+        MvcResult sum = mockMvc.perform(get("/api/v1/dashboard/summary").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pendingOrders.value").value(1))
+                .andExpect(jsonPath("$.data.newCustomers.value").value(1))
+                .andReturn();
+        JsonNode revenue = objectMapper.readTree(sum.getResponse().getContentAsString())
+                .path("data").path("revenueToday").path("value");
+        assertEquals(0, revenue.decimalValue().compareTo(new BigDecimal("30000")), "today's revenue");
+
+        // Checklist advances: add_customer, create_order, accept_payments now done -> 5 of 6.
+        mockMvc.perform(get("/api/v1/dashboard/setup-checklist").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completed").value(5));
+
+        // Dismissing the website step completes the checklist.
+        mockMvc.perform(post("/api/v1/dashboard/setup-checklist/set_up_website/dismiss")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.completed").value(6))
+                .andExpect(jsonPath("$.data.steps[4].key").value("set_up_website"))
+                .andExpect(jsonPath("$.data.steps[4].done").value(true));
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {

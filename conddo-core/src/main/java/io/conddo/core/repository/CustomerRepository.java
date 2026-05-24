@@ -3,7 +3,10 @@ package io.conddo.core.repository;
 import io.conddo.core.domain.Customer;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -13,4 +16,8 @@ import java.util.UUID;
  * tenant filtering would be both redundant and a place for bugs.
  */
 public interface CustomerRepository extends JpaRepository<Customer, UUID>, JpaSpecificationExecutor<Customer> {
+
+    /** Customers created in the window (RLS-scoped). Used by the dashboard KPI. */
+    @Query("select count(c) from Customer c where c.createdAt >= :start and c.createdAt < :end")
+    long countCreatedBetween(@Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
 }

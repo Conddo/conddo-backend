@@ -7,8 +7,12 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -40,6 +44,11 @@ public class Tenant {
 
     @Column(nullable = false)
     private String status = "ACTIVE";
+
+    /** Setup-checklist steps (§11.1) the owner has explicitly dismissed. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "setup_dismissed")
+    private List<String> setupDismissed = new ArrayList<>();
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -81,6 +90,20 @@ public class Tenant {
 
     public String getStatus() {
         return status;
+    }
+
+    public List<String> getSetupDismissed() {
+        return setupDismissed;
+    }
+
+    /** Marks a setup-checklist step (§11.1) as dismissed; idempotent. */
+    public void dismissSetupStep(String key) {
+        if (setupDismissed == null) {
+            setupDismissed = new ArrayList<>();
+        }
+        if (key != null && !key.isBlank() && !setupDismissed.contains(key)) {
+            setupDismissed.add(key);
+        }
     }
 
     public OffsetDateTime getCreatedAt() {
