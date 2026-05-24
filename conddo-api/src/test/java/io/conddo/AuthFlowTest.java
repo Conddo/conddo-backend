@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.conddo.api.security.JwtTenantContextFilter;
 import io.conddo.api.security.RefreshCookies;
 import io.conddo.core.auth.PasswordHasher;
-import io.conddo.core.notify.NotificationPort;
+import io.conddo.core.notify.EmailSender;
 import io.conddo.core.notify.SmsSender;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +35,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
@@ -93,7 +94,7 @@ class AuthFlowTest {
     @Autowired
     private ObjectMapper objectMapper;
     @MockBean
-    private NotificationPort notificationPort;
+    private EmailSender emailSender;
     @MockBean
     private SmsSender smsSender;
 
@@ -204,12 +205,13 @@ class AuthFlowTest {
                         .content(json(Map.of("tenantSlug", "pr-a", "email", "owner@pr.test"))))
                 .andExpect(status().isOk());
 
-        // The stub "delivers" the token; capture it to complete the reset.
-        ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
-        verify(notificationPort).sendPasswordReset(eq("owner@pr.test"), tokenCaptor.capture());
+        // The reset email carries the token; capture the body and pull it out.
+        ArgumentCaptor<String> bodyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(emailSender).send(eq("owner@pr.test"), anyString(), bodyCaptor.capture());
+        String resetToken = extractResetToken(bodyCaptor.getValue());
 
         mockMvc.perform(post("/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("token", tokenCaptor.getValue(), "newPassword", "brand-new-pass"))))
+                        .content(json(Map.of("token", resetToken, "newPassword", "brand-new-pass"))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
@@ -407,6 +409,13 @@ class AuthFlowTest {
                 return rs.getLong(1);
             }
         }
+    }
+
+    /** Pulls the "selector.verifier" reset token out of a reset email body. */
+    private String extractResetToken(String body) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("[\\w-]{8,}\\.[\\w-]{8,}").matcher(body);
+        assertTrue(matcher.find(), "no reset token in email body: " + body);
+        return matcher.group();
     }
 
     /** Extracts the 4-digit code from the (stubbed) SMS sent to a phone. */

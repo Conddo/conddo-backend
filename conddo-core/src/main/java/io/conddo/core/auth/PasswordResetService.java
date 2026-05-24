@@ -5,7 +5,7 @@ import io.conddo.core.audit.AuditService;
 import io.conddo.core.domain.PasswordResetToken;
 import io.conddo.core.domain.Tenant;
 import io.conddo.core.domain.User;
-import io.conddo.core.notify.NotificationPort;
+import io.conddo.core.notify.NotificationService;
 import io.conddo.core.repository.PasswordResetTokenRepository;
 import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.repository.UserRepository;
@@ -31,7 +31,7 @@ public class PasswordResetService {
     private final TenantSession tenantSession;
     private final PasswordHasher passwordHasher;
     private final RefreshTokenService refreshTokenService;
-    private final NotificationPort notificationPort;
+    private final NotificationService notificationService;
     private final AuditService auditService;
     private final AuthProperties properties;
     private final Clock clock;
@@ -39,7 +39,7 @@ public class PasswordResetService {
     public PasswordResetService(TenantRepository tenantRepository, UserRepository userRepository,
                                 PasswordResetTokenRepository passwordResetTokenRepository,
                                 TenantSession tenantSession, PasswordHasher passwordHasher,
-                                RefreshTokenService refreshTokenService, NotificationPort notificationPort,
+                                RefreshTokenService refreshTokenService, NotificationService notificationService,
                                 AuditService auditService, AuthProperties properties, Clock clock) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
@@ -47,7 +47,7 @@ public class PasswordResetService {
         this.tenantSession = tenantSession;
         this.passwordHasher = passwordHasher;
         this.refreshTokenService = refreshTokenService;
-        this.notificationPort = notificationPort;
+        this.notificationService = notificationService;
         this.auditService = auditService;
         this.properties = properties;
         this.clock = clock;
@@ -56,7 +56,7 @@ public class PasswordResetService {
     /**
      * Begins a reset. Returns silently whether or not the account exists (no
      * enumeration); if it exists, a single-use token is created and delivered
-     * out-of-band via the {@link NotificationPort}.
+     * out-of-band via the {@link NotificationService}.
      */
     @Transactional
     public void requestReset(String tenantSlug, String email) {
@@ -77,7 +77,7 @@ public class PasswordResetService {
         passwordResetTokenRepository.save(new PasswordResetToken(
                 user.getId(), tenant.getId(), selector, passwordHasher.hash(verifier), expiresAt));
 
-        notificationPort.sendPasswordReset(user.getEmail(), selector + OpaqueToken.SEPARATOR + verifier);
+        notificationService.sendPasswordReset(user.getEmail(), selector + OpaqueToken.SEPARATOR + verifier);
     }
 
     /**

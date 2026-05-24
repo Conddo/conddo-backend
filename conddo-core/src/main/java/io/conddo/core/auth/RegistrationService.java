@@ -3,7 +3,7 @@ package io.conddo.core.auth;
 import io.conddo.core.audit.AuditActions;
 import io.conddo.core.audit.AuditService;
 import io.conddo.core.domain.PendingRegistration;
-import io.conddo.core.notify.SmsSender;
+import io.conddo.core.notify.NotificationService;
 import io.conddo.core.repository.PendingRegistrationRepository;
 import io.conddo.core.service.TenantService;
 import org.springframework.stereotype.Service;
@@ -32,7 +32,7 @@ public class RegistrationService {
 
     private final PendingRegistrationRepository registrations;
     private final PasswordHasher passwordHasher;
-    private final SmsSender smsSender;
+    private final NotificationService notificationService;
     private final TenantService tenantService;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
@@ -44,12 +44,13 @@ public class RegistrationService {
     private final SecureRandom random = new SecureRandom();
 
     public RegistrationService(PendingRegistrationRepository registrations, PasswordHasher passwordHasher,
-                               SmsSender smsSender, TenantService tenantService, JwtService jwtService,
-                               RefreshTokenService refreshTokenService, AuditService auditService,
-                               AuthProperties authProperties, OtpProperties otp, Clock clock) {
+                               NotificationService notificationService, TenantService tenantService,
+                               JwtService jwtService, RefreshTokenService refreshTokenService,
+                               AuditService auditService, AuthProperties authProperties, OtpProperties otp,
+                               Clock clock) {
         this.registrations = registrations;
         this.passwordHasher = passwordHasher;
-        this.smsSender = smsSender;
+        this.notificationService = notificationService;
         this.tenantService = tenantService;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
@@ -68,7 +69,7 @@ public class RegistrationService {
                 fullName, phone, email, passwordHasher.hash(rawPassword),
                 passwordHasher.hash(code), now.plus(otp.ttl()), now);
         registrations.save(registration);
-        smsSender.send(phone, otpMessage(code));
+        notificationService.sendOtp(phone, code);
         return new StartResult(registration.getId(), otp.resendCooldown().toSeconds());
     }
 
@@ -109,7 +110,7 @@ public class RegistrationService {
         String code = generateCode();
         registration.newCode(passwordHasher.hash(code), now.plus(otp.ttl()), now);
         registrations.save(registration);
-        smsSender.send(registration.getPhone(), otpMessage(code));
+        notificationService.sendOtp(registration.getPhone(), code);
         return otp.resendCooldown().toSeconds();
     }
 
@@ -145,10 +146,6 @@ public class RegistrationService {
     private String generateCode() {
         int bound = (int) Math.pow(10, otp.codeLength());
         return String.format("%0" + otp.codeLength() + "d", random.nextInt(bound));
-    }
-
-    private String otpMessage(String code) {
-        return "Your Conddo verification code is " + code;
     }
 
     /** Outcome of {@link #start}: the id the frontend carries through the wizard. */

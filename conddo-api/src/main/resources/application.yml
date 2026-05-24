@@ -43,6 +43,20 @@ conddo:
     secret-key: ${CONDDO_MINIO_PASSWORD:conddo_secret_change_me}
     bucket: ${CONDDO_MINIO_BUCKET:conddo}
 
+  # Notification channels (PRD §6.4). provider 'log' = stub (the default); set
+  # 'termii' / 'resend' + credentials to deliver for real.
+  notifications:
+    sms:
+      provider: ${CONDDO_SMS_PROVIDER:log}
+      base-url: ${CONDDO_TERMII_BASE_URL:https://api.ng.termii.com}
+      api-key: ${CONDDO_TERMII_API_KEY:}
+      sender-id: ${CONDDO_TERMII_SENDER_ID:Conddo}
+    email:
+      provider: ${CONDDO_EMAIL_PROVIDER:log}
+      base-url: ${CONDDO_RESEND_BASE_URL:https://api.resend.com}
+      api-key: ${CONDDO_RESEND_API_KEY:}
+      from: ${CONDDO_EMAIL_FROM:no-reply@conddo.io}
+
   security:
     # Access-token signing (RSA-256). Local default = generated dev key pair on
     # the classpath (conddo-api/src/main/resources/keys, gitignored). Production
