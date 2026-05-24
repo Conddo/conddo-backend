@@ -5,6 +5,7 @@ import io.conddo.core.domain.Tenant;
 import io.conddo.core.repository.CustomerRepository;
 import io.conddo.core.repository.OrderPaymentRepository;
 import io.conddo.core.repository.OrderRepository;
+import io.conddo.core.repository.ProductRepository;
 import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantSession;
@@ -38,16 +39,18 @@ public class DashboardService {
     private final OrderRepository orderRepository;
     private final OrderPaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
+    private final ProductRepository productRepository;
     private final TenantRepository tenantRepository;
     private final TenantSession tenantSession;
     private final Clock clock;
 
     public DashboardService(OrderRepository orderRepository, OrderPaymentRepository paymentRepository,
-                            CustomerRepository customerRepository, TenantRepository tenantRepository,
-                            TenantSession tenantSession, Clock clock) {
+                            CustomerRepository customerRepository, ProductRepository productRepository,
+                            TenantRepository tenantRepository, TenantSession tenantSession, Clock clock) {
         this.orderRepository = orderRepository;
         this.paymentRepository = paymentRepository;
         this.customerRepository = customerRepository;
+        this.productRepository = productRepository;
         this.tenantRepository = tenantRepository;
         this.tenantSession = tenantSession;
         this.clock = clock;
@@ -78,8 +81,10 @@ public class DashboardService {
         Kpi newCustomers = new Kpi(newToday, signed(newToday - newYesterday) + " vs yesterday",
                 newToday >= newYesterday ? "success" : "warning");
 
-        // Inventory (§11.6) is not built yet, so low-stock is a placeholder 0.
-        Kpi lowStockItems = new Kpi(0L, "Tap to view", "neutral");
+        long lowStock = productRepository.countLowStock();
+        Kpi lowStockItems = new Kpi(lowStock,
+                lowStock == 0 ? "All stocked" : lowStock + " to reorder",
+                lowStock > 0 ? "danger" : "neutral");
 
         return new Summary(revenue, pendingOrders, newCustomers, lowStockItems);
     }

@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 
@@ -35,6 +36,13 @@ public class GlobalExceptionHandler {
                 .toList();
         ApiError error = ApiError.of("VALIDATION_ERROR", "Request validation failed", details);
         return ResponseEntity.badRequest().body(ApiResponse.fail(error));
+    }
+
+    /** A malformed typed path/query param (e.g. a non-UUID {id}) is a client error, not a 500. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.fail(ApiError.of("VALIDATION_ERROR", "Invalid value for '" + ex.getName() + "'")));
     }
 
     @ExceptionHandler(NotFoundException.class)

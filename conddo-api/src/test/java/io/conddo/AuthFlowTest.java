@@ -742,6 +742,64 @@ class AuthFlowTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void inventoryProductsCategoriesStockAndLowStockKpi() throws Exception {
+        String token = signupVerticalAndLogin("inv-a", "owner@inv.test", "general");
+
+        // Create a category, then a product in it with a reorder threshold.
+        MvcResult cat = mockMvc.perform(post("/api/v1/inventory/categories").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("name", "Fabrics"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.name").value("Fabrics"))
+                .andReturn();
+        String categoryId = objectMapper.readTree(cat.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        String createBody = objectMapper.writeValueAsString(Map.of(
+                "name", "Ankara Roll", "sku", "ANK-001", "categoryId", categoryId,
+                "price", 8000, "stock", 10, "reorderThreshold", 3));
+        MvcResult created = mockMvc.perform(post("/api/v1/inventory/products").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON).content(createBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.name").value("Ankara Roll"))
+                .andExpect(jsonPath("$.data.category").value("Fabrics"))
+                .andExpect(jsonPath("$.data.stock").value(10))
+                .andExpect(jsonPath("$.data.lowStock").value(false))
+                .andReturn();
+        String productId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        // Filter the list by category.
+        mockMvc.perform(get("/api/v1/inventory/products").param("category", categoryId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].sku").value("ANK-001"));
+
+        // Sell down below the reorder threshold -> the product is now low-stock.
+        mockMvc.perform(post("/api/v1/inventory/products/" + productId + "/adjust").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("delta", -8, "reason", "Sold"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stock").value(2))
+                .andExpect(jsonPath("$.data.lowStock").value(true));
+
+        // It surfaces in low-stock and drives the dashboard KPI (no longer a placeholder).
+        mockMvc.perform(get("/api/v1/inventory/low-stock").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
+        mockMvc.perform(get("/api/v1/dashboard/summary").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lowStockItems.value").value(1))
+                .andExpect(jsonPath("$.data.lowStockItems.tone").value("danger"));
+
+        // Delete -> gone.
+        mockMvc.perform(delete("/api/v1/inventory/products/" + productId).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/inventory/products/" + productId).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNotFound());
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {
