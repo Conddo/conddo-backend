@@ -120,7 +120,9 @@ management:
     health:
       show-components: always
   health:
-    # Disable until Redis is provisioned (Phase 1 item 2) so /actuator/health
-    # is not marked DOWN on a Redis-less deploy. Re-enable by setting true.
+    # OFF by default: Redis isn't provisioned yet (Phase 1 item 2), and a missing
+    # optional dependency must not make /actuator/health report DOWN — that would
+    # fail the Render health check and keep the deploy from going Live. Once Redis
+    # is provisioned, set CONDDO_REDIS_HEALTH_ENABLED=true to re-enable the probe.
     redis:
-      enabled: ${CONDDO_REDIS_HEALTH_ENABLED:true}
+      enabled: ${CONDDO_REDIS_HEALTH_ENABLED:false}
