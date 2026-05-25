@@ -750,7 +750,15 @@ backend can align. **Architecture v1.0 is captured in this repo** (`ARCHITECTURE
 - **Code wiring done (this repo):** `ResendEmailSender` already existed; **`BrevoSmsSender` added**
   (`conddo-core/notify`, activates on `conddo.notifications.sms.provider=brevo`). `application.yml`
   SMS block now reads `CONDDO_BREVO_API_KEY` / `CONDDO_SMS_BASE_URL` (default `https://api.brevo.com`).
-  **`NotificationService.sendOtp` sends the signup OTP by SMS**, password reset by email.
+  **Signup OTP now delivers by EMAIL (Resend, free)** — `RegistrationService.start`/`resend` call
+  `NotificationService.sendOtpEmail(email, code)` (was `sendOtp`/SMS). SMS via Brevo stays available
+  for funded use (order/booking notifications). So **only Resend env is needed for OTP**.
+- **Registration (OTP) flow is live at `/auth/register/{start,verify,resend,complete}`** — and
+  `complete()` **issues a JWT WITH `vertical`, `plan`, and `activeModules`** (via `toolMatrix.resolve`).
+  ⭐ The frontend currently signs up via the simpler `POST /api/v1/tenants` (no OTP, JWT lacks claims).
+  **Adopting `/auth/register/*` on the frontend gives free email-OTP AND the JWT claims that unblock
+  the manifest-driven shell (§16)** — no separate JWT change needed. (The plain `/auth/login` token
+  still needs the claims added for returning users.)
 - **To activate — set these env vars on the deployed (Render) backend, then redeploy:**
   - Email (Resend): `CONDDO_EMAIL_PROVIDER=resend`, `CONDDO_RESEND_API_KEY=<key>`,
     `CONDDO_EMAIL_FROM=<verified sender>` (Resend only sends from a verified domain/sender).

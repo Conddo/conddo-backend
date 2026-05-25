@@ -265,6 +265,21 @@ public class OrderService {
         return paymentRepository.findByOrderIdOrderByPaidAtDesc(orderId);
     }
 
+    /** A customer's order history (§11.3 profile), newest first, with computed flags. */
+    @Transactional(readOnly = true)
+    public List<OrderView> ordersForCustomer(UUID customerId) {
+        tenantSession.bind();
+        return orderRepository.findByCustomerIdOrderByCreatedAtDesc(customerId).stream()
+                .map(this::view).toList();
+    }
+
+    /** A customer's payment history across all their orders (§11.3 profile), newest first. */
+    @Transactional(readOnly = true)
+    public List<OrderPayment> paymentsForCustomer(UUID customerId) {
+        tenantSession.bind();
+        return paymentRepository.findByCustomerId(customerId);
+    }
+
     @Transactional
     public OrderPayment addPayment(UUID orderId, BigDecimal amount, String method, String note) {
         tenantSession.bind();

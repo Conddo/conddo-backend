@@ -19,6 +19,9 @@ import java.util.UUID;
  */
 public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
 
+    /** A customer's orders, newest first (§11.3 profile order history). */
+    List<Order> findByCustomerIdOrderByCreatedAtDesc(UUID customerId);
+
     /** Orders not in a terminal stage — the dashboard's "pending orders" KPI. */
     @Query("select count(o) from Order o where lower(o.stage) not in :terminalStages")
     long countPending(@Param("terminalStages") Collection<String> terminalStages);
