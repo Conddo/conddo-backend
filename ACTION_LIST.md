@@ -715,3 +715,60 @@ Dependencies first, then highest-leverage modules:
 > and screens light up with zero frontend changes.** Auth: the client sends
 > `Authorization: Bearer <token>` from `localStorage` (`conddo_access_token`); a
 > login screen will populate it against §7.1.
+
+### 11.14 — Live integration findings & decisions (2026-05-24, from the frontend)
+The frontend now consumes the live API end-to-end. Recording what we found so the
+backend can align. **Architecture v1.0 is captured in this repo** (`ARCHITECTURE.md` §1–20,
+`VERTICALS.md`) — the canonical master is `conddo_architecture.md` at the workspace root.
+
+- **Envelope:** confirmed `{success, data, meta?, error{code,message,details[]}}` (NOT `ok`).
+  Frontend handles this; keep it stable.
+- **JWT is missing claims:** access token only carries `tenant_id, sub, role, iss, exp, iat`.
+  **Add `activeModules`, `vertical`, `plan`** (§4.4) — the manifest-driven frontend (§16) and
+  module-access gate (§10) need them. **`/api/v1/registry/manifests` is still 500** — until it
+  + the claims ship, the frontend uses a static-nav fallback (ready to flip instantly).
+- **Live & wired:** `/auth/*`, signup, `/me`, `/customers` (+`/{id}`), `/orders` (+`/board`,
+  `/{id}`), `/dashboard/summary`, `/bookings/*`, `/verticals/{id}/config`, `/inventory/products`,
+  `/staff`, `/notifications`, `/settings/business-profile`, `/analytics/overview`.
+- **Still 500 (frontend shows clean empty states until live):** `/payments/*`, `/marketing/*`,
+  `/website`, `/registry/manifests`, `/customers/{id}/orders`, `/customers/{id}/payments`.
+- **Shapes that differed from §11 — frontend adapted; treat THESE as the contract (or tell us to realign):**
+  - `/notifications` → `{items:[], unread:0}` (not a bare array).
+  - `/analytics/overview` → flat `{revenue, orders, newCustomers, avgOrderValue}` (not `{kpis,...,series}`).
+  - `/staff` → rows may have `name: null` (frontend falls back to email); `lastActive` is ISO.
+  - `/settings/business-profile` → uses `name` (not `businessName`); `industry`, `subdomain`, nullable fields.
+  - `/customers/{id}` → `{name,email,phone,tag,tags[],memberSince(ISO),totalSpent,orders,avgOrderValue,lastActive,notes,measurements}`.
+  - `/orders/{id}` → `{reference,service,stage,stages[],flag,dueDate,orderedAt,amount,billing{total,deposit,balance},customer,items[],payments[],measurements,notes,activity[{id,type,title,detail,actor,at}]}`. 👍 great shape, fully wired.
+- **`/customers/{id}` & `/orders/{id}` validate id as UUID** (400 on non-UUID) — list/board/detail
+  all use the UUID `id`; orders also return a display `reference` (ORD-xxxx).
+
+#### Auth / OTP / Email / SMS — decision
+- **Current signup is email + password (no OTP)** via `POST /api/v1/tenants` (then `/auth/login`
+  with `email`+`password`+`tenantSlug`). This works; logins succeed (first request after idle is a
+  ~30–60s Render cold start — likely why "can't log in / create account" *feels* broken in dev).
+- **Provider split (supersedes the single-Brevo note in §1/§18):** **Resend = email**, **Brevo = SMS**.
+- **Code wiring done (this repo):** `ResendEmailSender` already existed; **`BrevoSmsSender` added**
+  (`conddo-core/notify`, activates on `conddo.notifications.sms.provider=brevo`). `application.yml`
+  SMS block now reads `CONDDO_BREVO_API_KEY` / `CONDDO_SMS_BASE_URL` (default `https://api.brevo.com`).
+  **Signup OTP now delivers by EMAIL (Resend, free)** — `RegistrationService.start`/`resend` call
+  `NotificationService.sendOtpEmail(email, code)` (was `sendOtp`/SMS). SMS via Brevo stays available
+  for funded use (order/booking notifications). So **only Resend env is needed for OTP**.
+- **Registration (OTP) flow is live at `/auth/register/{start,verify,resend,complete}`** — and
+  `complete()` **issues a JWT WITH `vertical`, `plan`, and `activeModules`** (via `toolMatrix.resolve`).
+  ⭐ The frontend currently signs up via the simpler `POST /api/v1/tenants` (no OTP, JWT lacks claims).
+  **Adopting `/auth/register/*` on the frontend gives free email-OTP AND the JWT claims that unblock
+  the manifest-driven shell (§16)** — no separate JWT change needed. (The plain `/auth/login` token
+  still needs the claims added for returning users.)
+- **To activate — set these env vars on the deployed (Render) backend, then redeploy:**
+  - Email (Resend): `CONDDO_EMAIL_PROVIDER=resend`, `CONDDO_RESEND_API_KEY=<key>`,
+    `CONDDO_EMAIL_FROM=<verified sender>` (Resend only sends from a verified domain/sender).
+  - SMS (Brevo): `CONDDO_SMS_PROVIDER=brevo`, `CONDDO_BREVO_API_KEY=<key>`, `CONDDO_SMS_SENDER_ID=Conddo`.
+  - ⚠️ **Brevo free tier has NO SMS credits** (free = email only). OTP-by-SMS won't deliver until SMS
+    credits + a registered sender are added. **Free path: deliver OTP by email** (Resend) — small change
+    to `NotificationService.sendOtp` (needs the email at OTP time). Flag if you want that switch.
+  - Keys live ONLY in Render env, never committed. The plaintext keys shared in chat should be **rotated**.
+- **Action for backend:** (1) add the missing JWT claims; (2) implement `/registry/manifests`;
+  (3) ship `/payments/*`, `/marketing/*`, `/website`; (4) set the Resend/Brevo env vars above + redeploy
+  (code is wired); (5) build `/customers/{id}/orders` + `/customers/{id}/payments`.
+- **Test data on the live tenant `conddo-demo-1779614690` (safe to delete):** customer
+  `05117bd9-d6eb-40ab-ac99-3e1fe7be96ee` (Test Buyer), order `809bbbfe-…` (ORD-2894).

@@ -5,11 +5,14 @@ import io.conddo.api.web.dto.CustomerProfile;
 import io.conddo.api.web.dto.CustomerRow;
 import io.conddo.api.web.dto.MeasurementsBody;
 import io.conddo.api.web.dto.NotesBody;
+import io.conddo.api.web.dto.OrderCard;
+import io.conddo.api.web.dto.OrderPaymentDto;
 import io.conddo.api.web.dto.TagBody;
 import io.conddo.api.web.dto.UpdateCustomerRequest;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.domain.Customer;
 import io.conddo.core.service.CustomerService;
+import io.conddo.core.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -36,9 +39,9 @@ import java.util.UUID;
  * by RLS — these methods never see another tenant's data. Reads are open to any
  * staff role; writes default to {@code TENANT_ADMIN} (or an acting SUPER_ADMIN).
  *
- * <p>Order/payment history, CSV import/export, bulk actions, and single-message
- * send are deferred until the Orders (§11.4), Notifications, and Billing modules
- * they depend on are in place.
+ * <p>CSV import/export, bulk actions, and single-message send remain deferred
+ * until the Notifications/Billing modules they depend on are in place. Order and
+ * payment history are served here (the Orders module is built).
  */
 @RestController
 @RequestMapping("/api/v1/customers")
@@ -50,9 +53,11 @@ public class CustomerController {
     private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
 
     private final CustomerService customerService;
+    private final OrderService orderService;
 
-    public CustomerController(CustomerService customerService) {
+    public CustomerController(CustomerService customerService, OrderService orderService) {
         this.customerService = customerService;
+        this.orderService = orderService;
     }
 
     /** List with search + segment filter + pagination. {@code filter}/{@code segment} are aliases. */
@@ -105,6 +110,22 @@ public class CustomerController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         customerService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Order history for the customer profile (§11.3). 404 if the customer is unknown. */
+    @GetMapping("/{id}/orders")
+    @PreAuthorize(READ)
+    public ApiResponse<List<OrderCard>> orders(@PathVariable UUID id) {
+        customerService.get(id);
+        return ApiResponse.ok(orderService.ordersForCustomer(id).stream().map(OrderCard::from).toList());
+    }
+
+    /** Payment history across the customer's orders (§11.3). 404 if the customer is unknown. */
+    @GetMapping("/{id}/payments")
+    @PreAuthorize(READ)
+    public ApiResponse<List<OrderPaymentDto>> payments(@PathVariable UUID id) {
+        customerService.get(id);
+        return ApiResponse.ok(orderService.paymentsForCustomer(id).stream().map(OrderPaymentDto::from).toList());
     }
 
     @GetMapping("/{id}/notes")

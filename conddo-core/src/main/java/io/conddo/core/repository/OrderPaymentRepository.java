@@ -21,4 +21,9 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, UUID
 
     /** Individual payments in the window, for analytics time-series bucketing (§11.9). */
     List<OrderPayment> findByPaidAtBetween(OffsetDateTime start, OffsetDateTime end);
+
+    /** All payments across a customer's orders, newest first (§11.3 profile payment history). */
+    @Query("select p from OrderPayment p where p.orderId in "
+            + "(select o.id from Order o where o.customerId = :customerId) order by p.paidAt desc")
+    List<OrderPayment> findByCustomerId(@Param("customerId") UUID customerId);
 }

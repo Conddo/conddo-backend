@@ -280,11 +280,12 @@ class AuthFlowTest {
     @Test
     void stagedSignupVerifiesPhoneThenCreatesTenantAndLogsIn() throws Exception {
         String phone = "+2348030000001";
-        String regId = registerStart("Amaka", phone, "amaka@biz.test");
+        String email = "amaka@biz.test";
+        String regId = registerStart("Amaka", phone, email);
 
-        // Verify with the code the (stubbed) SMS "sent".
+        // Verify with the code the (stubbed) OTP email "sent".
         mockMvc.perform(post("/auth/register/verify").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("registrationId", regId, "code", capturedOtp(phone)))))
+                        .content(json(Map.of("registrationId", regId, "code", capturedOtp(email)))))
                 .andExpect(status().isOk());
 
         // Complete -> tenant + admin created, logged in. Slug auto-derived from name.
@@ -310,9 +311,9 @@ class AuthFlowTest {
 
     @Test
     void wrongOtpIsRejected() throws Exception {
-        String phone = "+2348030000002";
-        String regId = registerStart("Bola", phone, "bola@biz.test");
-        String wrong = capturedOtp(phone).equals("0000") ? "1111" : "0000";
+        String email = "bola@biz.test";
+        String regId = registerStart("Bola", "+2348030000002", email);
+        String wrong = capturedOtp(email).equals("0000") ? "1111" : "0000";
 
         mockMvc.perform(post("/auth/register/verify").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("registrationId", regId, "code", wrong))))
@@ -1097,6 +1098,65 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.data.emailOpenRate.value").value(0.0));
     }
 
+    @Test
+    void accessTokenCarriesVerticalPlanAndActiveModules() throws Exception {
+        String token = signupVerticalAndLogin("claims-a", "owner@claims.test", "fashion");
+
+        JsonNode claims = decodeJwtClaims(token);
+        assertEquals("fashion", claims.path("vertical").asText());
+        assertEquals("starter", claims.path("plan").asText());   // no plan set -> normalised to starter
+        String modules = claims.path("activeModules").toString();
+        assertTrue(modules.contains("\"website\""), "activeModules has website: " + modules);
+        assertTrue(modules.contains("\"crm\""), "activeModules has crm: " + modules);
+        assertTrue(modules.contains("\"orders.fashion\""), "fashion starter has orders.fashion: " + modules);
+    }
+
+    @Test
+    void registryManifestsBuildNavFromActiveModules() throws Exception {
+        String token = signupVerticalAndLogin("reg-a", "owner@reg.test", "fashion");
+
+        // Two marketing tools must collapse to a single Marketing nav section.
+        mockMvc.perform(get("/api/v1/registry/manifests")
+                        .param("modules", "website,crm,orders.fashion,marketing.social,marketing.email,analytics")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(5))   // website, customers, orders, marketing, analytics
+                .andExpect(jsonPath("$.data[0].navItem.label").value("Website"))
+                .andExpect(jsonPath("$.data[0].navItem.path").value("/website"))
+                .andExpect(jsonPath("$.data[1].navItem.label").value("Customers"))
+                .andExpect(jsonPath("$.data[3].toolId").value("marketing"))
+                .andExpect(jsonPath("$.data[3].navItem.path").value("/marketing"));
+    }
+
+    @Test
+    void customerOrderAndPaymentHistory() throws Exception {
+        String token = signupVerticalAndLogin("hist-a", "owner@hist.test", "fashion");
+        String customerId = createCustomerReturningId(token, "Repeat Buyer");
+        String orderId = createOrder(token, customerId, "Gown", 50000);
+        createOrder(token, customerId, "Suit", 30000);
+        mockMvc.perform(post("/api/v1/orders/" + orderId + "/payments").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("amount", 20000, "method", "Cash"))))
+                .andExpect(status().isCreated());
+
+        // Order history: both orders, newest first, with the snapshot customer name.
+        mockMvc.perform(get("/api/v1/customers/" + customerId + "/orders").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].customer").value("Repeat Buyer"));
+
+        // Payment history across the customer's orders.
+        mockMvc.perform(get("/api/v1/customers/" + customerId + "/payments").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].method").value("Cash"));
+
+        // Unknown customer -> 404.
+        mockMvc.perform(get("/api/v1/customers/" + java.util.UUID.randomUUID() + "/orders")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNotFound());
+    }
+
     // ----- helpers ---------------------------------------------------------
 
     private void signup(String slug, String adminEmail) throws Exception {
@@ -1136,12 +1196,15 @@ class AuthFlowTest {
         return matcher.group();
     }
 
-    /** Extracts the 4-digit code from the (stubbed) SMS sent to a phone. */
-    private String capturedOtp(String phone) {
-        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
-        verify(smsSender, atLeastOnce()).send(eq(phone), message.capture());
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d{4}").matcher(message.getValue());
-        assertTrue(matcher.find(), "no OTP code in SMS: " + message.getValue());
+    /**
+     * Extracts the 4-digit code from the (stubbed) OTP email. Signup OTP now goes
+     * by email (Resend free path; see RegistrationService) rather than SMS.
+     */
+    private String capturedOtp(String email) {
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(emailSender, atLeastOnce()).send(eq(email), anyString(), body.capture());
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d{4}").matcher(body.getValue());
+        assertTrue(matcher.find(), "no OTP code in email: " + body.getValue());
         return matcher.group();
     }
 
@@ -1236,5 +1299,11 @@ class AuthFlowTest {
 
     private static String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    /** Decodes a JWT's payload (claims) without verifying the signature. */
+    private JsonNode decodeJwtClaims(String token) throws Exception {
+        String payload = token.split("\\.")[1];
+        return objectMapper.readTree(java.util.Base64.getUrlDecoder().decode(payload));
     }
 }
