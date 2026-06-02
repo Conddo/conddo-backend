@@ -85,7 +85,14 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(properties.allowedOrigins());
+        if (properties.allowedOrigins() != null && !properties.allowedOrigins().isEmpty()) {
+            config.setAllowedOrigins(properties.allowedOrigins());
+        }
+        // Patterns (e.g. https://*.conddo.io) are required for preview/multi-subdomain
+        // deployments — exact origins can't cover Vercel preview URLs and tenant subdomains.
+        if (properties.allowedOriginPatterns() != null && !properties.allowedOriginPatterns().isEmpty()) {
+            config.setAllowedOriginPatterns(properties.allowedOriginPatterns());
+        }
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Act-As-Tenant"));
         config.setAllowCredentials(true);
