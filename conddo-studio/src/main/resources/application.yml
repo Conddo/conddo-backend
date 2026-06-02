@@ -41,6 +41,22 @@ studio:
   # /api/jobs/intake). Must match conddo-api's STUDIO_SERVICE_TOKEN. Blank = intake off.
   service:
     token: ${STUDIO_SERVICE_TOKEN:}
+  # AI assistant (§8) — Claude (Anthropic). Blank api-key → the assistant is dormant
+  # (endpoints return available:false, never an error). Model is the current Sonnet
+  # (the spec's claude-sonnet-4-20250514 is deprecated); set CLAUDE_MODEL to override
+  # (e.g. claude-opus-4-7 for max quality).
+  ai:
+    claude:
+      api-key: ${CLAUDE_API_KEY:}
+      model: ${CLAUDE_MODEL:claude-sonnet-4-6}
+  # First-admin bootstrap — see StudioAdminBootstrap. Only used on an empty
+  # studio.staff table; safe to leave set across restarts. Clear after first login
+  # and rotate the password from the Staff page.
+  bootstrap:
+    admin:
+      email: ${STUDIO_BOOTSTRAP_ADMIN_EMAIL:}
+      password: ${STUDIO_BOOTSTRAP_ADMIN_PASSWORD:}
+      name: ${STUDIO_BOOTSTRAP_ADMIN_NAME:Studio Admin}
 
 management:
   endpoints:

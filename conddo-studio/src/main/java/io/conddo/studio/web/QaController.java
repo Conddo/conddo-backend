@@ -1,5 +1,6 @@
 package io.conddo.studio.web;
 
+import io.conddo.studio.ai.AiAssistantService;
 import io.conddo.studio.auth.StudioPrincipal;
 import io.conddo.studio.common.ApiResponse;
 import io.conddo.studio.jobs.JobService;
@@ -58,5 +59,11 @@ public class QaController {
                                                             @Valid @RequestBody QaReturnRequest request) {
         jobService.qaReturn(id, StudioPrincipal.staffId(jwt), request.checklist(), request.feedback());
         return ApiResponse.ok(JobDetailResponse.from(jobService.detail(id)));
+    }
+
+    /** AI QA scan over the job's brief + submission (§8). {@code available:false} if Claude is off. */
+    @GetMapping("/{id}/scan")
+    public ApiResponse<AiAssistantService.QaScanResult> scan(@PathVariable UUID id) {
+        return ApiResponse.ok(jobService.aiScan(id));
     }
 }
