@@ -1,11 +1,15 @@
 package io.conddo.studio.web;
 
+import io.conddo.studio.ai.AiAssistantService;
 import io.conddo.studio.auth.StudioPrincipal;
 import io.conddo.studio.common.ApiResponse;
 import io.conddo.studio.jobs.JobService;
+import io.conddo.studio.web.dto.AiSuggestRequest;
 import io.conddo.studio.web.dto.JobCard;
 import io.conddo.studio.web.dto.JobDetailResponse;
+import io.conddo.studio.web.dto.PaletteRequest;
 import io.conddo.studio.web.dto.SubmitJobRequest;
+import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -67,5 +71,20 @@ public class JobController {
         String notes = request == null ? null : request.notes();
         jobService.submit(id, StudioPrincipal.staffId(jwt), url, notes);
         return ApiResponse.ok(JobDetailResponse.from(jobService.detail(id)));
+    }
+
+    // ----- AI assistant (§8) --------------------------------------------------
+
+    /** Generate AI copy for a section and store it on the job. {@code available:false} if Claude is off. */
+    @PostMapping("/{id}/ai-suggest")
+    public ApiResponse<AiAssistantService.CopyResult> aiSuggest(@PathVariable UUID id,
+                                                                @Valid @RequestBody AiSuggestRequest request) {
+        return ApiResponse.ok(jobService.aiSuggest(id, request.section()));
+    }
+
+    /** Generate an accessible colour palette from a primary hex (no job required). */
+    @PostMapping("/ai/palette")
+    public ApiResponse<AiAssistantService.PaletteResult> palette(@Valid @RequestBody PaletteRequest request) {
+        return ApiResponse.ok(jobService.aiPalette(request.primaryHex()));
     }
 }

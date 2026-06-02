@@ -2,12 +2,16 @@ package io.conddo.studio;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.studio.ai.ClaudeClient;
 import io.conddo.studio.auth.StudioServiceTokenFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -24,6 +28,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -65,6 +70,33 @@ class StudioJobsFlowTest {
     private MockMvc mockMvc;
     @Autowired
     private ObjectMapper objectMapper;
+
+    /**
+     * Stub Claude so the AI endpoints run end-to-end without a real API key. Returns
+     * one superset JSON that satisfies copy (headline), palette (primary), and QA
+     * scan (overallQuality). {@code @Primary} overrides the real (dormant) client.
+     */
+    @TestConfiguration
+    static class AiTestConfig {
+        @Bean
+        @Primary
+        ClaudeClient stubClaudeClient() {
+            return new ClaudeClient() {
+                @Override
+                public Optional<String> complete(String system, String user, int maxTokens, boolean think) {
+                    return Optional.of("{\"headline\":\"Genuine medicines, always in stock\","
+                            + "\"subheadline\":\"Your trusted Lekki pharmacy\",\"ctaText\":\"Order now\","
+                            + "\"primary\":\"#7C5CBF\",\"background\":\"#FFFFFF\","
+                            + "\"issues\":[],\"positives\":[\"Clean layout\"],\"overallQuality\":\"PASS\"}");
+                }
+
+                @Override
+                public boolean isConfigured() {
+                    return true;
+                }
+            };
+        }
+    }
 
     /** Seed three staff (the service has no public staff-creation bootstrap). Idempotent. */
     @BeforeEach
@@ -192,6 +224,58 @@ class StudioJobsFlowTest {
                         .header(StudioServiceTokenFilter.HEADER, "wrong-token")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aiAssistantGeneratesCopyPaletteAndScan() throws Exception {
+        // Admin creates a website-build job with a pharmacy brief.
+        String adminToken = login(ADMIN);
+        MvcResult created = mockMvc.perform(post("/api/jobs/admin/jobs").header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jobTypeId", "WEBSITE_BUILD", "title", "Website Build — MedPlus",
+                                "brief", Map.of("businessName", "MedPlus", "vertical", "pharmacy",
+                                        "description", "Community pharmacy in Lekki")))))
+                .andExpect(status().isCreated()).andReturn();
+        String jobId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        // Dev claims it (→ ASSIGNED) so it doesn't pollute the lifecycle test's available count.
+        String devToken = login(DEV);
+        mockMvc.perform(post("/api/jobs/" + jobId + "/claim").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isOk());
+
+        // Dev requests AI copy for the HERO section — returned + stored on the job.
+        mockMvc.perform(post("/api/jobs/" + jobId + "/ai-suggest").header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("section", "HERO"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true))
+                .andExpect(jsonPath("$.data.section").value("HERO"))
+                .andExpect(jsonPath("$.data.copy.headline").value("Genuine medicines, always in stock"));
+
+        mockMvc.perform(get("/api/jobs/" + jobId).header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.aiSuggestions.HERO.headline")
+                        .value("Genuine medicines, always in stock"));
+
+        // Palette utility — no job required.
+        mockMvc.perform(post("/api/jobs/ai/palette").header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("primaryHex", "#7C5CBF"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true))
+                .andExpect(jsonPath("$.data.palette.primary").value("#7C5CBF"));
+
+        // QA scan is QA-only.
+        String qaToken = login(QA);
+        mockMvc.perform(get("/api/jobs/qa/" + jobId + "/scan").header(HttpHeaders.AUTHORIZATION, bearer(qaToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.available").value(true))
+                .andExpect(jsonPath("$.data.scan.overallQuality").value("PASS"));
+
+        mockMvc.perform(get("/api/jobs/qa/" + jobId + "/scan").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

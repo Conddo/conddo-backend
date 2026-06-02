@@ -83,6 +83,11 @@ public class Job {
     @Column(name = "studio_url")
     private String studioUrl;
 
+    /** AI-generated copy suggestions, keyed by section (§8). Shown in the job detail. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "ai_suggestions", nullable = false)
+    private Map<String, Object> aiSuggestions = new java.util.HashMap<>();
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -238,6 +243,18 @@ public class Job {
 
     public String getStudioUrl() {
         return studioUrl;
+    }
+
+    public Map<String, Object> getAiSuggestions() {
+        return aiSuggestions;
+    }
+
+    /** Records an AI copy suggestion for a section (§8), e.g. HERO → {headline, …}. */
+    public void putAiSuggestion(String section, Object value) {
+        if (this.aiSuggestions == null) {
+            this.aiSuggestions = new java.util.HashMap<>();
+        }
+        this.aiSuggestions.put(section, value);
     }
 
     public OffsetDateTime getCreatedAt() {

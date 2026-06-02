@@ -1,5 +1,6 @@
 package io.conddo.studio.jobs;
 
+import io.conddo.studio.ai.AiAssistantService;
 import io.conddo.studio.common.ConflictException;
 import io.conddo.studio.common.NotFoundException;
 import io.conddo.studio.config.StudioProperties;
@@ -51,12 +52,14 @@ public class JobService {
     private final StaffNotificationRepository notifications;
     private final JdbcTemplate jdbcTemplate;
     private final StudioProperties properties;
+    private final AiAssistantService aiAssistant;
     private final Clock clock = Clock.systemUTC();
 
     public JobService(JobRepository jobRepository, JobTypeRepository jobTypeRepository,
                       JobActivityRepository activityRepository, QaReviewRepository qaReviewRepository,
                       StaffRepository staffRepository, StaffNotificationRepository notifications,
-                      JdbcTemplate jdbcTemplate, StudioProperties properties) {
+                      JdbcTemplate jdbcTemplate, StudioProperties properties,
+                      AiAssistantService aiAssistant) {
         this.jobRepository = jobRepository;
         this.jobTypeRepository = jobTypeRepository;
         this.activityRepository = activityRepository;
@@ -65,6 +68,7 @@ public class JobService {
         this.notifications = notifications;
         this.jdbcTemplate = jdbcTemplate;
         this.properties = properties;
+        this.aiAssistant = aiAssistant;
     }
 
     // ----- creation (admin / future auto-create on signup) --------------------
@@ -216,6 +220,32 @@ public class JobService {
         job.escalate();
         log(jobId, null, "JOB_ESCALATED", reason);
         return jobRepository.save(job);
+    }
+
+    // ----- AI assistant (§8) --------------------------------------------------
+
+    /** Generates AI copy for a section and stores it on the job (appears in the detail). */
+    @Transactional
+    public AiAssistantService.CopyResult aiSuggest(UUID jobId, String section) {
+        Job job = require(jobId);
+        AiAssistantService.CopyResult result = aiAssistant.generateSectionCopy(job.getBrief(), section);
+        if (result.available()) {
+            job.putAiSuggestion(result.section(), result.copy());
+            jobRepository.save(job);
+            log(jobId, null, "AI_SUGGEST", "AI copy generated for " + result.section());
+        }
+        return result;
+    }
+
+    /** Generates an accessible colour palette from a primary hex (no job needed). */
+    public AiAssistantService.PaletteResult aiPalette(String primaryHex) {
+        return aiAssistant.generatePalette(primaryHex);
+    }
+
+    /** Runs an AI QA scan over a job's brief + submission (read-only). */
+    @Transactional(readOnly = true)
+    public AiAssistantService.QaScanResult aiScan(UUID jobId) {
+        return aiAssistant.scanSubmission(require(jobId));
     }
 
     // ----- performance --------------------------------------------------------

@@ -25,6 +25,7 @@ public record JobDetailResponse(
         String studioUrl,
         Map<String, Object> brief,
         List<Map<String, Object>> assets,
+        Map<String, Object> aiSuggestions,
         List<JobActivityDto> activity,
         List<QaReviewDto> qaReviews,
         OffsetDateTime createdAt
@@ -34,7 +35,7 @@ public record JobDetailResponse(
         return new JobDetailResponse(j.getId(), j.getJobNumber(), j.getJobTypeId(), j.getTitle(), j.getStatus(),
                 d.slaTone(), j.getSlaDeadline(), j.getSlaExtendedBy(), j.getRevisionCount(),
                 j.getAssignedTo(), d.assignedToName(), j.getTenantId(), j.getStudioUrl(),
-                j.getBrief(), j.getAssets(),
+                j.getBrief(), j.getAssets(), j.getAiSuggestions(),
                 d.activity().stream().map(JobActivityDto::from).toList(),
                 d.qaReviews().stream().map(QaReviewDto::from).toList(),
                 j.getCreatedAt());
