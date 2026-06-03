@@ -34,7 +34,8 @@
 20. ~~Implementation Rules for Agents~~ → moved to §23
 21. [Website Builder API](#21-website-builder-api)   *(post-V1)*
 22. [Job Export & Import](#22-job-export--import)   *(post-V1)*
-23. [Implementation Rules for Agents](#23-implementation-rules-for-agents)
+23. [Platform Admin — Cross-Tenant Management](#23-platform-admin--cross-tenant-management)   *(post-V1)*
+24. [Implementation Rules for Agents](#24-implementation-rules-for-agents)
 
 ---
 
@@ -1950,6 +1951,18 @@ BUILDER (see §21 for full spec)
 EXPORT / IMPORT (see §22 for full spec)
   GET    /jobs/:id/export                      Download job as a ZIP bundle (manifest + assets + site)
   POST   /jobs/:id/import                      Upload a previously-exported bundle to replace state
+
+PLATFORM ADMIN (Studio ADMIN only, see §23 for full spec)
+  GET    /admin/platform/tenants                        List all tenants (search + status filter)
+  GET    /admin/platform/tenants/:id                    Tenant detail + counts
+  PATCH  /admin/platform/tenants/:id                    Update tenant (name, plan, status)
+  DELETE /admin/platform/tenants/:id                    Soft-delete tenant
+  GET    /admin/platform/tenants/:id/users              Users within a tenant
+  GET    /admin/platform/users                          Global user search across tenants
+  GET    /admin/platform/users/:id                      User detail
+  PATCH  /admin/platform/users/:id                      Update user (role, active, name)
+  POST   /admin/platform/users/:id/reset-password       Issue a password-reset email
+  DELETE /admin/platform/users/:id                      Soft-delete user
 ```
 
 ---
@@ -2254,6 +2267,26 @@ PHASE 11 — Website Builder (post-V1)   ← see §21
     Studio, see live changes via SSE, and submit it for QA without
     leaving the app
 
+PHASE 13a — Platform Admin (read-only)   ← see §23
+  ☐ V4__studio_platform_admin.sql: platform_admin_audit_log table
+  ☐ PlatformTenant + PlatformUser JPA entities pointing at public schema
+  ☐ GET /admin/platform/tenants, /:id, /:id/users
+  ☐ GET /admin/platform/users (global search + filter by tenant/role)
+  ☐ Studio FE: /admin/platform pages (tenant list, user list, drill-down)
+  Definition of done: Studio admin can see every tenant, every user
+    across the platform, search/filter, but cannot yet modify them
+
+PHASE 13b — Platform Admin (mutations)   ← see §23
+  ☐ PATCH/DELETE /tenants/:id  (suspend/reactivate/soft-delete)
+  ☐ PATCH/DELETE /users/:id, POST /users/:id/reset-password
+  ☐ studio.platform_admin_audit_log writes for every mutation
+  ☐ Last-admin protection (422 LAST_ADMIN_PROTECTED)
+  ☐ Session invalidation: revokeFamilyForUser hooks
+  ☐ SSE events: platform.tenant_status_changed, platform.user_deactivated
+  ☐ Studio FE: suspend/reset-password actions on the platform pages
+  Definition of done: Studio admin can suspend a tenant, change a
+    user's role, force-reset a password — and every action is audited
+
 PHASE 12 — Job Export / Import (post-V1)   ← see §22
   ☐ GET /jobs/:id/export — streams a ZIP (manifest, brief.md, site.json,
     ai-suggestions.json, qa-history.json, activity.json, /assets/*)
@@ -2556,7 +2589,227 @@ STUDIO_IMPORT_MAX_BYTES              = 256 MB    (whole bundle)
 
 ---
 
-## 23. Implementation Rules for Agents
+## 23. Platform Admin — Cross-Tenant Management
+
+**Status:** Not yet implemented. Today the Studio ADMIN can manage *internal*
+Handel Cores staff (the `studio.staff` table) but cannot see or modify the
+platform side — tenants, tenant admins, or tenant staff. Operationally this
+means a Studio admin can't suspend a misbehaving tenant, can't help a tenant
+admin who lost access, and can't see who's actually using the platform.
+
+This section specs new endpoints under Studio's `/api/jobs/admin/platform/*`
+namespace that close that gap by reaching into the platform plane's
+`tenants` + `users` tables.
+
+### 23.1 Why Studio is the right host
+
+Three reasons we add this to **Studio**, not as a brand-new admin app:
+
+1. The Studio backend already runs as `conddo_owner` Postgres role
+   (`STUDIO_DB_USER` defaults to `conddo_owner` per Studio's `application.yml`).
+   That role has full read/write across `studio`, `jobs`, *and* the platform's
+   `public` schema. No new credential needed.
+2. Studio already has an ADMIN role + audited admin endpoints + a UI for
+   admin work. Reusing those primitives keeps the surface area small.
+3. The Handel Cores team logs into Studio every day anyway; a separate app
+   means a separate session, separate password reset story, separate SSO
+   wiring later. Avoid the friction.
+
+The mirror move — letting a Studio ADMIN call platform endpoints over HTTP —
+is also valid (and arguably more correct architecturally because business
+rules stay in conddo-api), but it's significantly more work: needs a
+reverse service token, a JWT-with-SUPER_ADMIN minting path, and a new HTTP
+gateway. We can refactor to that later if cross-service rules diverge; for
+V1, direct DB access via the existing owner role is fine.
+
+### 23.2 Approach: read-only mirror entities + careful mutators
+
+Add JPA entities in Studio that **mirror** the platform's tables — pointing
+at `public.tenants` and `public.users`, **not** copies. These are read mostly;
+mutations go through small dedicated services that enforce the few
+cross-cutting rules (e.g. suspending a tenant cascades to its users, deleting
+a tenant fires a `TenantDeactivated` event the platform listens for).
+
+```java
+@Entity
+@Table(name = "tenants", schema = "public")
+public class PlatformTenant {
+    @Id private UUID id;
+    private String name;
+    private String slug;
+    private String verticalId;
+    private String planId;
+    private String status;          // ACTIVE / SUSPENDED / DELETED
+    private OffsetDateTime createdAt;
+    // ... read-only mappings of the columns Studio admins need
+}
+
+@Entity
+@Table(name = "users", schema = "public")
+public class PlatformUser {
+    @Id private UUID id;
+    private UUID tenantId;
+    private String email;
+    private String fullName;
+    private String role;            // TENANT_ADMIN / STAFF / CUSTOMER
+    private boolean active;
+    private OffsetDateTime lastLoginAt;
+    // ...
+}
+```
+
+**RLS bypass:** the platform's `users` table has RLS enforced. Studio's
+session runs as `conddo_owner` which is the row-policy *owner* role and so
+sees every row. **Never** add `BYPASSRLS` to any role.
+
+### 23.3 Endpoint Contracts
+
+All endpoints below require **Studio ADMIN** (not TEAM_LEAD; the blast
+radius is too large). Every mutation writes to a new audit table
+`studio.platform_admin_audit_log` with `(actorStaffId, action, target, before,
+after, at)`.
+
+```
+TENANTS
+
+GET    /api/jobs/admin/platform/tenants
+       Query: ?q=<search>&status=<ACTIVE|SUSPENDED|DELETED>&page=0&size=25
+       → 200 { tenants: [PlatformTenantSummary], meta: {page, size, total} }
+
+GET    /api/jobs/admin/platform/tenants/{tenantId}
+       → 200 { tenant, counts: { users, activeJobs, deliveredJobs } }
+
+PATCH  /api/jobs/admin/platform/tenants/{tenantId}
+       Body: { name?, planId?, status? }     // status: ACTIVE | SUSPENDED
+       → 200 { tenant }
+       Side effects:
+         - status:SUSPENDED → all tenant users' sessions invalidated
+           (refresh-token family killed); they bounce on next request.
+         - planId change → recompute activeModules manifest.
+
+DELETE /api/jobs/admin/platform/tenants/{tenantId}
+       → 204
+       Semantics: soft-delete (status=DELETED, deletedAt set). RLS still
+       hides rows from tenant queries. Studio admins see them but can't
+       reactivate (use PATCH status=ACTIVE for that).
+
+USERS
+
+GET    /api/jobs/admin/platform/users
+       Query: ?q=<email|name>&tenantId=<uuid>&role=<TENANT_ADMIN|STAFF|CUSTOMER>&page=0&size=25
+       → 200 { users: [PlatformUserSummary], meta }
+       Global search — across tenants. Tenant filter narrows.
+
+GET    /api/jobs/admin/platform/tenants/{tenantId}/users
+       → 200 { users: [PlatformUserSummary] }
+       Listed-within-tenant variant for the tenant detail page.
+
+GET    /api/jobs/admin/platform/users/{userId}
+       → 200 { user, tenant, recentActivity }
+
+PATCH  /api/jobs/admin/platform/users/{userId}
+       Body: { role?, active?, fullName? }
+       → 200 { user }
+       Invariants:
+         - Cannot demote the last TENANT_ADMIN of a tenant (returns 422
+           with code LAST_ADMIN_PROTECTED).
+         - Cannot change tenantId (would orphan their data).
+         - active:false → kill refresh-token family.
+
+POST   /api/jobs/admin/platform/users/{userId}/reset-password
+       → 202 (issues a reset email via the platform's existing
+         PasswordResetService). No body — the user gets the standard reset
+         link. Returns 202 because email delivery is async.
+
+DELETE /api/jobs/admin/platform/users/{userId}
+       → 204
+       Soft-delete; their `users.deletedAt` is set, refresh tokens revoked.
+       Cannot hard-delete from Studio (FK constraints on their content).
+```
+
+### 23.4 Audit log
+
+```sql
+CREATE TABLE studio.platform_admin_audit_log (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id     UUID NOT NULL REFERENCES studio.staff(id),
+    action       TEXT NOT NULL,            -- TENANT_SUSPEND / USER_ROLE_CHANGE / USER_PASSWORD_RESET / ...
+    target_kind  TEXT NOT NULL,            -- TENANT / USER
+    target_id    UUID NOT NULL,
+    before       JSONB,
+    after        JSONB,
+    at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    correlation  TEXT                      -- optional request id for join with Studio activity log
+);
+CREATE INDEX idx_platform_admin_audit_actor ON studio.platform_admin_audit_log (actor_id, at DESC);
+CREATE INDEX idx_platform_admin_audit_target ON studio.platform_admin_audit_log (target_kind, target_id, at DESC);
+```
+
+Every PATCH/DELETE on the endpoints above writes a row. GETs do not — they're
+read-only and the platform's `audit_log` table already records request paths.
+
+### 23.5 Important integrity rules
+
+- **Last admin protection.** A tenant with one TENANT_ADMIN cannot have that
+  admin demoted or deactivated. Returns `422 LAST_ADMIN_PROTECTED` —
+  the Studio UI handles this by asking the operator to promote another user
+  first.
+- **Soft-delete only.** Studio admins cannot hard-delete tenants or users.
+  Hard deletion is an operations-team escalation handled by direct DB access
+  (with audit). The endpoints reject hard-delete attempts with 405.
+- **Session invalidation.** Suspending a tenant, deactivating a user, or
+  changing a user's role all kill the affected refresh-token family. The
+  platform's `RefreshTokenService.revokeFamilyForUser(userId)` already does
+  this; the new mutators call it directly.
+- **No tenant data peeking.** Studio admins see tenant metadata (name,
+  plan, user list, counts) — they do **not** get RLS-bypass access to that
+  tenant's customers/orders/etc. To do tenant-data debugging, the existing
+  SUPER_ADMIN `/api/v1/admin/*` endpoints with `X-Act-As-Tenant` are the
+  right surface, not these.
+
+### 23.6 SSE Events (added to the existing event hub)
+
+```
+platform.tenant_status_changed     { tenantId, newStatus, actorStaffId, at }
+platform.user_deactivated          { userId, tenantId, actorStaffId, at }
+```
+
+Studio TEAM_LEAD + ADMIN subscribe (they should know when a peer suspends
+a tenant during their shift).
+
+### 23.7 Phased delivery
+
+```
+PHASE 13a — Read-only platform views
+  ☐ V4__studio_platform_admin.sql: platform_admin_audit_log table
+  ☐ PlatformTenant + PlatformUser entities pointing at public schema
+  ☐ GET /api/jobs/admin/platform/tenants (+detail, +count)
+  ☐ GET /api/jobs/admin/platform/users (global search + per-tenant)
+  ☐ Studio FE: /admin/platform pages (tenant list, user list)
+
+PHASE 13b — Mutations
+  ☐ PATCH /tenants/:id, DELETE /tenants/:id   (suspend/reactivate)
+  ☐ PATCH /users/:id, POST /users/:id/reset-password, DELETE /users/:id
+  ☐ Audit log writes for every mutation
+  ☐ Session invalidation hooks (revokeFamilyForUser, lastAdminGuard)
+  ☐ SSE events: platform.tenant_status_changed, platform.user_deactivated
+```
+
+Read-only first so the FE has data to display while mutation semantics are
+nailed down. The mutation phase is where the integrity rules above need
+test coverage.
+
+### 23.8 Open question for the implementer
+
+Mirror-entity vs. service-to-service HTTP — pick one for V1 and document
+why. Mirror is faster; HTTP gateway is more correct architecturally if the
+platform later grows business rules around tenant lifecycle that Studio
+shouldn't duplicate. For Phase 13a (read-only), mirror entities are clearly
+right. For Phase 13b, revisit before writing the mutators.
+
+---
+
+## 24. Implementation Rules for Agents
 
 Read these before writing any code. These rules are non-negotiable.
 

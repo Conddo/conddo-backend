@@ -242,6 +242,22 @@ In the order that gives the most FE win per backend hour:
 These came up while debugging deployment issues — capturing them so the
 backend team doesn't relearn them:
 
+- **Signup → Studio job hand-off requires two env vars on `conddo-backend`.**
+  `STUDIO_BASE_URL` + `STUDIO_SERVICE_TOKEN` must both be set or
+  `HttpStudioJobGateway` silently no-ops on `TenantActivatedEvent` —
+  signups complete but no `WEBSITE_BUILD` job appears in Studio. The
+  exception is swallowed (correctly — we don't want a Studio outage to
+  break signup) but there's no surfaced error in the platform response.
+  Caught this in production after a real-user signup created the tenant
+  but no Studio job; missing job needs a manual
+  `POST /api/jobs/intake` with the same service token to recover.
+
+- **First-signup user role is `TENANT_ADMIN`** — workspace admin, **not**
+  platform admin. The role is scoped to that tenant only and RLS enforces
+  it at the DB level. The Studio's internal staff (`studio.staff`) is a
+  separate axis (`InternalRole`). Cross-tenant admin work is the new §23
+  "Platform Admin" spec — not yet built.
+
 - **Render free tier sleeps after ~15 min idle.** First request takes 30–60 s
   to wake the instance. The FE's 45 s timeout now surfaces this as a real
   error ("The server didn't respond in time"). If you upgrade to Render
