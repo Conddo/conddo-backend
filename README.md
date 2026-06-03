@@ -3,6 +3,12 @@
 Spring Boot 3 multi-module backend. Phase 0 establishes the spine everything
 else hangs off: **multi-tenancy enforced by PostgreSQL Row Level Security**.
 
+> 👋 **New here?** Start with [**REQUIREMENTS.md**](./REQUIREMENTS.md) — the
+> front-door spec covering what Conddo.io is, who it's for, the full feature
+> surface across both planes (tenant platform + Conddo Studio), and a map of
+> the rest of the docs. This README is the operator's guide to the Phase 0
+> backend specifically.
+
 ```
 backend/                  (this repo — conddo-backend)
   pom.xml                 parent (multi-module)
