@@ -9,6 +9,7 @@ import io.conddo.core.signup.WebsiteTypeResolver;
 import io.conddo.core.studio.StudioJobGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,7 @@ public class TenantActivationListener {
         this.studioJobGateway = studioJobGateway;
     }
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public void onTenantActivated(TenantActivatedEvent event) {

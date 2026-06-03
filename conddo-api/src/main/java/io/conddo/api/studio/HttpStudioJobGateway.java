@@ -6,9 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +34,17 @@ public class HttpStudioJobGateway implements StudioJobGateway {
     private static final String INTAKE_PATH = "/api/jobs/intake";
     private static final Logger log = LoggerFactory.getLogger(HttpStudioJobGateway.class);
 
+    /**
+     * Hard ceilings on the Studio HTTP call. The listener fires AFTER_COMMIT in
+     * the signup's request thread (no @Async yet), so an unbounded wait here
+     * would block the signup response. Studio's Render free-tier cold start can
+     * take 30–60s; we accept that the first signup after a Studio idle period
+     * may fall back to the manual-recovery path, rather than freezing the user
+     * for that long.
+     */
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
+
     private final RestClient restClient;
     private final boolean enabled;
 
@@ -39,10 +52,18 @@ public class HttpStudioJobGateway implements StudioJobGateway {
                                 @Value("${studio.base-url:}") String baseUrl,
                                 @Value("${studio.service-token:}") String serviceToken) {
         this.enabled = !baseUrl.isBlank() && !serviceToken.isBlank();
-        this.restClient = enabled
-                ? restClientBuilder.baseUrl(baseUrl.trim())
-                        .defaultHeader(SERVICE_TOKEN_HEADER, serviceToken.trim()).build()
-                : null;
+        if (enabled) {
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+            factory.setReadTimeout((int) READ_TIMEOUT.toMillis());
+            this.restClient = restClientBuilder
+                    .baseUrl(baseUrl.trim())
+                    .defaultHeader(SERVICE_TOKEN_HEADER, serviceToken.trim())
+                    .requestFactory(factory)
+                    .build();
+        } else {
+            this.restClient = null;
+        }
     }
 
     @Override
