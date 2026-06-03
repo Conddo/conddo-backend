@@ -472,6 +472,124 @@ class StudioJobsFlowTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_CREDENTIALS"));
     }
 
+    /**
+     * Cross-staff security audit (Slice G / Phase 10 §7). Pins the membership
+     * rules so a future refactor of {@code @PreAuthorize}/{@code requireAssigned}
+     * doesn't silently widen the blast radius. A developer must not be able to
+     * mutate another developer's job, the QA queue is QA-only, and the admin
+     * surface is admin/lead-only.
+     *
+     * <p>Uses only fresh staff members (seeded inside this test) so it never
+     * pollutes state visible to other tests (notifications, claims, etc).
+     */
+    @Test
+    void crossStaffSecurityAuditAllRoleBoundaries() throws Exception {
+        // Isolated staff so no other test sees notifications/claims from this run.
+        String secEmailA = "sec-dev-a@studio.test";
+        String secEmailB = "sec-dev-b@studio.test";
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            String hash = new BCryptPasswordEncoder(12).encode(PW);
+            insertStaff(c, secEmailA, hash, "Sec Dev A", "DEVELOPER", "[\"WEBSITE_BUILD\"]");
+            insertStaff(c, secEmailB, hash, "Sec Dev B", "DEVELOPER", "[\"WEBSITE_BUILD\"]");
+        }
+
+        String adminToken = login(ADMIN);
+        String devAToken = login(secEmailA);
+        String devBToken = login(secEmailB);
+        String qaToken = login(QA);
+
+        // Admin creates a job; Sec Dev A claims it.
+        MvcResult created = mockMvc.perform(post("/api/jobs/admin/jobs").header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jobTypeId", "WEBSITE_BUILD", "title", "Security Audit Job",
+                                "brief", Map.of("businessName", "AuditCo", "vertical", "fashion")))))
+                .andExpect(status().isCreated()).andReturn();
+        String jobId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        mockMvc.perform(post("/api/jobs/" + jobId + "/claim").header(HttpHeaders.AUTHORIZATION, bearer(devAToken)))
+                .andExpect(status().isOk());
+
+        // 1. Dev B cannot start Dev A's job (assigned-only enforcement).
+        mockMvc.perform(patch("/api/jobs/" + jobId + "/start").header(HttpHeaders.AUTHORIZATION, bearer(devBToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CONFLICT"));
+
+        // 2. Dev B cannot submit Dev A's job either.
+        mockMvc.perform(post("/api/jobs/" + jobId + "/submit").header(HttpHeaders.AUTHORIZATION, bearer(devBToken)))
+                .andExpect(status().isConflict());
+
+        // 3. Dev B cannot reassign someone else's job (admin-only).
+        mockMvc.perform(patch("/api/jobs/admin/" + jobId + "/reassign")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devBToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("staffId", java.util.UUID.randomUUID()))))
+                .andExpect(status().isForbidden());
+
+        // 4. Dev B cannot escalate / extend SLA / mutate the admin catalogue.
+        mockMvc.perform(patch("/api/jobs/admin/" + jobId + "/escalate")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devBToken))
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/jobs/admin/job-types").header(HttpHeaders.AUTHORIZATION, bearer(devBToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "id", "BLOCKED_TYPE", "displayName", "x", "slaHours", 8))))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/jobs/admin/design-standards").header(HttpHeaders.AUTHORIZATION, bearer(devBToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "kind", "PALETTE", "name", "Blocked palette"))))
+                .andExpect(status().isForbidden());
+
+        // 5. QA also cannot mutate the ADMIN-only writes (job-types).
+        mockMvc.perform(post("/api/jobs/admin/job-types").header(HttpHeaders.AUTHORIZATION, bearer(qaToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "id", "QA_BLOCKED", "displayName", "x", "slaHours", 8))))
+                .andExpect(status().isForbidden());
+
+        // 6. Developers cannot reach the QA queue / QA scan — QA-only endpoints.
+        mockMvc.perform(get("/api/jobs/qa/queue").header(HttpHeaders.AUTHORIZATION, bearer(devAToken)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/jobs/qa/" + jobId + "/scan").header(HttpHeaders.AUTHORIZATION, bearer(devAToken)))
+                .andExpect(status().isForbidden());
+
+        // 7. Unauthenticated access to the SSE stream fails.
+        mockMvc.perform(get("/api/jobs/events"))
+                .andExpect(status().isUnauthorized());
+
+        // 8. Mark-all-read is scoped to the caller — Dev B's read-all doesn't drop Dev A's count.
+        //    Drive a QA revision against Dev A so they have an unread notification.
+        mockMvc.perform(patch("/api/jobs/" + jobId + "/start").header(HttpHeaders.AUTHORIZATION, bearer(devAToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/jobs/" + jobId + "/submit").header(HttpHeaders.AUTHORIZATION, bearer(devAToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("studioUrl", "https://x"))))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/jobs/qa/" + jobId + "/start").header(HttpHeaders.AUTHORIZATION, bearer(qaToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/jobs/qa/" + jobId + "/return").header(HttpHeaders.AUTHORIZATION, bearer(qaToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("feedback", "fix it"))))
+                .andExpect(status().isOk());
+        // Dev A has at least one unread; Dev B has zero (no notifications were ever sent to them).
+        mockMvc.perform(get("/api/jobs/notifications").param("unread", "true")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devAToken)))
+                .andExpect(jsonPath("$.data.unread").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+        // Dev B hits read-all → only their own (zero) count gets touched.
+        mockMvc.perform(patch("/api/jobs/notifications/read-all")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devBToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.updated").value(0));
+        // Dev A is still unread — no cross-staff leak.
+        mockMvc.perform(get("/api/jobs/notifications").param("unread", "true")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devAToken)))
+                .andExpect(jsonPath("$.data.unread").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+    }
+
     // ----- helpers ------------------------------------------------------------
 
     private String login(String email) throws Exception {
