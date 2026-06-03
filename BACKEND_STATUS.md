@@ -31,9 +31,10 @@ a source of truth.
 | **E — SLA monitor** | `@Scheduled` (5 min) walks active jobs, broadcasts an `sla.tick` snapshot to leads + admins, auto-escalates anything past deadline (which reuses the D pipeline for free). | 4 unit | ✅ merged to main |
 | **F.1 — Job-type CRUD** | ADMIN can add new types, tune per-type SLA hours, retire types via soft-delete. | 11 unit + e2e | ✅ merged to main |
 | **F.2 — Persistent performance** | Daily 02:00 UTC recalc into `jobs.staff_performance` (the V1 table that was idle). New monthly snapshots + 12-month history. | 7 unit | ✅ merged to main |
-| **F.3 — Design Standard Library** | ADMIN-curated reference content (palettes / layouts / copy patterns / typography) per vertical. AI prompt-injection of this content is the next sub-slice. | 11 unit | ✅ merged to main |
+| **F.3 — Design Standard Library** | ADMIN-curated reference content (palettes / layouts / copy patterns / typography) per vertical. | 11 unit | ✅ merged to main |
+| **F.3 follow-up — DSL → AI prompts** | DSL entries are now injected into Claude prompts: copy gen reads COPY_PATTERN, palette reads PALETTE (`vertical` field added to `PaletteRequest`), QA scan reads all three relevant kinds. | 4 new AI tests | ✅ merged to main |
 
-**Test totals as of this doc:** **48 conddo-api + 61 conddo-studio = 109 green.**
+**Test totals as of this doc:** **48 conddo-api + 65 conddo-studio = 113 green.**
 
 The full Studio test suite runs in **~90 s** (the 60 s e2e StudioJobsFlowTest
 under Testcontainers is the heaviest item; everything else is sub-second).
@@ -145,9 +146,13 @@ Create body: `{vertical?, kind, name, description?, content?}`. `kind` ∈
 `PALETTE | LAYOUT | COPY_PATTERN | TYPOGRAPHY`. `vertical: null` (or omitted)
 means "applies to every vertical".
 
-**Next slice** wires this into the AI prompts: the Copy Generator + Palette
-Generator will read the active standards for the job's vertical and ground
-their suggestions on them.
+**Now wired** into the AI prompts (commit `b2ad6b7`): COPY_PATTERN
+standards reach `POST /jobs/{id}/ai-suggest`, PALETTE standards reach
+`POST /jobs/ai/palette` (the request body now takes an optional
+`vertical` field — see §5 reminder below), and the QA scan reads
+COPY_PATTERN + LAYOUT + TYPOGRAPHY for the job's vertical. With no DSL
+rows for a vertical, the prompt structure is unchanged (no dangling
+"Standards reference:" header).
 
 ---
 
@@ -214,6 +219,11 @@ For the new endpoints + the existing ones:
   payload is the raw event record, **not** the envelope.
 - **Studio session tokens stay in the body** (`{accessToken, refreshToken}`),
   refresh via `POST /api/jobs/auth/refresh {refreshToken}`. Unchanged.
+- **`POST /jobs/ai/palette`** body picked up an optional `vertical` field
+  (`{primaryHex, vertical?}`). Backward-compatible — omitting it falls back
+  to globals-only DSL grounding. No FE change required, but passing
+  `vertical: "pharmacy"` from the palette UI will yield more on-brand
+  results once ADMINs seed the DSL.
 - **CORS** on the Studio service supports both `STUDIO_CORS_ALLOWED_ORIGINS`
   (exact) + `STUDIO_CORS_ALLOWED_ORIGIN_PATTERNS` (wildcards for Vercel
   previews). The SSE endpoint is allowed under the same rule (it's a regular
@@ -238,13 +248,13 @@ Ranked by FE impact, mirroring §4 of FRONTEND_STATUS.md:
    Requested by ops for offline work. ZIP streamer + Cloudinary
    server-side download. Independent of #2. Spec in `conddo_studio_combined.md §22`.
    **Not yet started.**
-4. **DSL → AI prompt injection (sub-slice of F.3)** — wire
-   `DesignStandardService.forVertical(...)` into the Copy + Palette
-   generators so admins' curated standards actually ground Claude's output.
-   Code-only; no FE work needed.
-5. **Slice G — Phase 10 hardening** — missing-coverage tests, the
+4. **Slice G — Phase 10 hardening** — missing-coverage tests, the
    50-concurrent-SSE load test, and a cross-staff security audit. **Up next
    in the queue.**
+
+Done since the original doc landed:
+- **DSL → AI prompt injection** — merged in `b2ad6b7`. See §5 note about
+  the new optional `vertical` field on `PaletteRequest`.
 
 After this Phase, the user has explicitly queued **Payment Service (RoutePay
 resumption)** as the next workstream.
