@@ -31,6 +31,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,7 +61,11 @@ class StudioJobsFlowTest {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-            .withDatabaseName("conddo").withUsername("conddo_owner").withPassword("owner_password");
+            .withDatabaseName("conddo").withUsername("conddo_owner").withPassword("owner_password")
+            // Seed the public.tenants/users tables conddo-api normally owns, so
+            // Studio's @Table(schema=public) mirror entities pass ddl-auto:validate
+            // at boot (§23.2 read-only mirror).
+            .withInitScript("test-platform-tables.sql");
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -458,6 +465,116 @@ class StudioJobsFlowTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "id", "BLOCKED", "displayName", "x", "slaHours", 8))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void platformAdminReadsTenantsAndUsersAcrossThePlatform() throws Exception {
+        // Seed two platform tenants + their admins directly via SQL (we're testing
+        // Studio's read of the platform side; Studio doesn't create tenants).
+        UUID tenantAId = UUID.randomUUID();
+        UUID tenantBId = UUID.randomUUID();
+        UUID userAId = UUID.randomUUID();
+        UUID userBId = UUID.randomUUID();
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            seedPlatformTenant(c, tenantAId, "Amaka Styles", "amaka-styles", "fashion", "starter");
+            seedPlatformTenant(c, tenantBId, "Wellspring Pharmacy", "wellspring", "pharmacy", "pro");
+            seedPlatformUser(c, userAId, tenantAId, "owner@amaka-styles.test", "Amaka", "TENANT_ADMIN");
+            seedPlatformUser(c, userBId, tenantBId, "owner@wellspring.test", "Wellspring", "TENANT_ADMIN");
+        }
+
+        String adminToken = login(ADMIN);
+        String devToken = login(DEV);
+
+        // GET /platform/tenants — both seeded tenants visible to ADMIN.
+        MvcResult tenants = mockMvc.perform(get("/api/jobs/admin/platform/tenants")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
+                .andReturn();
+        String tenantsBody = tenants.getResponse().getContentAsString();
+        assertTrue(tenantsBody.contains("Amaka Styles"));
+        assertTrue(tenantsBody.contains("Wellspring Pharmacy"));
+
+        // Search narrows by name/slug.
+        mockMvc.perform(get("/api/jobs/admin/platform/tenants")
+                        .param("q", "amaka")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].slug").value("amaka-styles"));
+
+        // Detail returns counts.
+        mockMvc.perform(get("/api/jobs/admin/platform/tenants/" + tenantAId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Amaka Styles"))
+                .andExpect(jsonPath("$.data.counts.users").value(1))
+                .andExpect(jsonPath("$.data.counts.activeUsers").value(1));
+
+        // Users-for-tenant nested list.
+        mockMvc.perform(get("/api/jobs/admin/platform/tenants/" + tenantAId + "/users")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].email").value("owner@amaka-styles.test"));
+
+        // Global user search.
+        mockMvc.perform(get("/api/jobs/admin/platform/users")
+                        .param("q", "wellspring")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].tenantId").value(tenantBId.toString()));
+
+        // User detail includes the tenant breadcrumb.
+        mockMvc.perform(get("/api/jobs/admin/platform/users/" + userBId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenant.slug").value("wellspring"));
+
+        // Unknown ids → 404.
+        mockMvc.perform(get("/api/jobs/admin/platform/tenants/" + UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/jobs/admin/platform/users/" + UUID.randomUUID())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isNotFound());
+
+        // Developer (not ADMIN) cannot reach any platform-admin endpoint.
+        mockMvc.perform(get("/api/jobs/admin/platform/tenants")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/jobs/admin/platform/users")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    private static void seedPlatformTenant(Connection c, UUID id, String name, String slug,
+                                           String verticalId, String planId) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO public.tenants (id, name, slug, vertical_id, plan_id) "
+                        + "VALUES (?::uuid, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING")) {
+            ps.setString(1, id.toString());
+            ps.setString(2, name);
+            ps.setString(3, slug);
+            ps.setString(4, verticalId);
+            ps.setString(5, planId);
+            ps.executeUpdate();
+        }
+    }
+
+    private static void seedPlatformUser(Connection c, UUID id, UUID tenantId, String email,
+                                         String fullName, String role) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO public.users (id, tenant_id, email, password_hash, full_name, role) "
+                        + "VALUES (?::uuid, ?::uuid, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING")) {
+            ps.setString(1, id.toString());
+            ps.setString(2, tenantId.toString());
+            ps.setString(3, email);
+            ps.setString(4, "hash");
+            ps.setString(5, fullName);
+            ps.setString(6, role);
+            ps.executeUpdate();
+        }
     }
 
     @Test
