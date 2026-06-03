@@ -2,6 +2,7 @@ package io.conddo.api.web;
 
 import io.conddo.api.security.RefreshCookies;
 import io.conddo.api.web.dto.ForgotPasswordRequest;
+import io.conddo.api.web.dto.GoogleLoginRequest;
 import io.conddo.api.web.dto.LoginRequest;
 import io.conddo.api.web.dto.LoginResponse;
 import io.conddo.api.web.dto.ResetPasswordRequest;
@@ -42,6 +43,16 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         AuthResult result = authService.login(request.tenantSlug(), request.email(), request.password());
+        return tokenResponse(result);
+    }
+
+    /**
+     * Sign in with a Google ID token (ACTION_LIST §1a). Same response shape as
+     * {@link #login}: access token in the body, refresh token in the cookie.
+     */
+    @PostMapping("/google")
+    public ResponseEntity<ApiResponse<LoginResponse>> google(@Valid @RequestBody GoogleLoginRequest request) {
+        AuthResult result = authService.loginWithGoogle(request.tenantSlug(), request.idToken());
         return tokenResponse(result);
     }
 

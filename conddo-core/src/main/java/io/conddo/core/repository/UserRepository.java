@@ -15,4 +15,7 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByEmail(String email);
+
+    /** Look up a Google-linked user (within the RLS-bound tenant). */
+    Optional<User> findByGoogleSub(String googleSub);
 }

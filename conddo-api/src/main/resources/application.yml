@@ -121,6 +121,15 @@ conddo:
       resend-cooldown: ${CONDDO_OTP_RESEND_COOLDOWN:30s}
       max-resends: ${CONDDO_OTP_MAX_RESENDS:5}
 
+    # Google Sign-in (ACTION_LIST §1a) — OAuth client id from Google Cloud Console
+    # → APIs & Services → Credentials. Blank → /auth/google + /auth/register/start-google
+    # return 400 GOOGLE_ID_TOKEN_INVALID (the dormant verifier rejects every token),
+    # so the FE buttons surface a clean error rather than crashing the boot.
+    # No client secret is required — this is ID-token verify only (no auth-code flow).
+    oauth:
+      google:
+        client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+
 # Conddo Studio (Production plane) hand-off — see SERVICE_TOPOLOGY.md §4. When both
 # base-url and service-token are set, an owner website change-request creates a Studio
 # job; otherwise the request is recorded PENDING for manual pickup. The token is the

@@ -65,16 +65,38 @@ public class User implements LockableAccount {
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 
+    /** Google's immutable subject id once the account is linked (§1a). */
+    @Column(name = "google_sub")
+    private String googleSub;
+
+    /** Last-seen email from the Google ID token (informational only — Google can change it). */
+    @Column(name = "google_email")
+    private String googleEmail;
+
+    @Column(name = "google_linked_at")
+    private OffsetDateTime googleLinkedAt;
+
     protected User() {
     }
 
     public User(UUID tenantId, String email, String passwordHash, String fullName, String role, String phone) {
+        this(tenantId, email, passwordHash, fullName, role, phone, null);
+    }
+
+    /** Full constructor — used during signup-with-Google so the link is written atomically. */
+    public User(UUID tenantId, String email, String passwordHash, String fullName, String role, String phone,
+                String googleSub) {
         this.tenantId = tenantId;
         this.email = email;
         this.passwordHash = passwordHash;
         this.fullName = fullName;
         this.role = role;
         this.phone = phone;
+        if (googleSub != null && !googleSub.isBlank()) {
+            this.googleSub = googleSub;
+            this.googleEmail = email;
+            this.googleLinkedAt = OffsetDateTime.now();
+        }
     }
 
     /** True if the account is locked at {@code now} (lockout window not yet elapsed). */
@@ -116,6 +138,31 @@ public class User implements LockableAccount {
 
     public void markPhoneVerified() {
         this.phoneVerified = true;
+    }
+
+    /**
+     * Link a Google account to this user. Idempotent — re-linking with the same
+     * {@code sub} just refreshes the cached email and link timestamp; a different
+     * {@code sub} replaces the link (the spec lets a user move their Google
+     * login between Google accounts as long as the new {@code sub} isn't already
+     * claimed elsewhere — uniqueness is enforced by the DB index).
+     */
+    public void linkGoogle(String sub, String email, OffsetDateTime at) {
+        this.googleSub = sub;
+        this.googleEmail = email;
+        this.googleLinkedAt = at;
+    }
+
+    public String getGoogleSub() {
+        return googleSub;
+    }
+
+    public String getGoogleEmail() {
+        return googleEmail;
+    }
+
+    public OffsetDateTime getGoogleLinkedAt() {
+        return googleLinkedAt;
     }
 
     public UUID getId() {

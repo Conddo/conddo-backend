@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -48,22 +49,40 @@ public class HttpStudioJobGateway implements StudioJobGateway {
     private final RestClient restClient;
     private final boolean enabled;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public HttpStudioJobGateway(RestClient.Builder restClientBuilder,
                                 @Value("${studio.base-url:}") String baseUrl,
                                 @Value("${studio.service-token:}") String serviceToken) {
+        this(restClientBuilder, baseUrl, serviceToken, defaultTimeoutFactory());
+    }
+
+    /**
+     * Test-friendly constructor — lets {@code MockRestServiceServer} keep its
+     * bound factory by passing {@code null}; production keeps the bounded-timeout
+     * behaviour added in commit {@code bc14ffd}. Not auto-wired (no {@code @Autowired}),
+     * so Spring picks the three-arg public constructor.
+     */
+    public HttpStudioJobGateway(RestClient.Builder restClientBuilder, String baseUrl, String serviceToken,
+                                ClientHttpRequestFactory requestFactoryOverride) {
         this.enabled = !baseUrl.isBlank() && !serviceToken.isBlank();
         if (enabled) {
-            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-            factory.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
-            factory.setReadTimeout((int) READ_TIMEOUT.toMillis());
-            this.restClient = restClientBuilder
+            RestClient.Builder configured = restClientBuilder
                     .baseUrl(baseUrl.trim())
-                    .defaultHeader(SERVICE_TOKEN_HEADER, serviceToken.trim())
-                    .requestFactory(factory)
-                    .build();
+                    .defaultHeader(SERVICE_TOKEN_HEADER, serviceToken.trim());
+            if (requestFactoryOverride != null) {
+                configured.requestFactory(requestFactoryOverride);
+            }
+            this.restClient = configured.build();
         } else {
             this.restClient = null;
         }
+    }
+
+    private static ClientHttpRequestFactory defaultTimeoutFactory() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+        factory.setReadTimeout((int) READ_TIMEOUT.toMillis());
+        return factory;
     }
 
     @Override

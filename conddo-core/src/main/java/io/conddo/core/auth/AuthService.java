@@ -41,6 +41,7 @@ public class AuthService {
     private final AuditService auditService;
     private final VerticalToolMatrix toolMatrix;
     private final AuthProperties properties;
+    private final GoogleIdTokenVerifier googleVerifier;
     private final Clock clock;
 
     /** A real BCrypt hash, matched against when no user is found, to equalise timing. */
@@ -50,7 +51,7 @@ public class AuthService {
                        TenantSession tenantSession, PasswordHasher passwordHasher, JwtService jwtService,
                        RefreshTokenService refreshTokenService, LockoutPolicy lockoutPolicy,
                        AuditService auditService, VerticalToolMatrix toolMatrix,
-                       AuthProperties properties, Clock clock) {
+                       AuthProperties properties, GoogleIdTokenVerifier googleVerifier, Clock clock) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
         this.tenantSession = tenantSession;
@@ -61,6 +62,7 @@ public class AuthService {
         this.auditService = auditService;
         this.toolMatrix = toolMatrix;
         this.properties = properties;
+        this.googleVerifier = googleVerifier;
         this.clock = clock;
         this.timingEqualiserHash = passwordHasher.hash("timing-equaliser");
     }
@@ -154,5 +156,65 @@ public class AuthService {
     @Transactional
     public void logout(String rawRefreshToken) {
         refreshTokenService.revokeFamilyOf(rawRefreshToken);
+    }
+
+    // ----- Google Sign-in (ACTION_LIST §1a) ----------------------------------
+
+    /**
+     * Sign in with a Google ID token. Lookup is per-tenant: first by linked
+     * {@code google_sub}, then (one-shot) by {@code email} so a returning user
+     * who hasn't signed in with Google yet gets transparently linked. Either
+     * way the response shape matches {@link #login(String, String, String)}.
+     *
+     * <p>Errors:
+     * <ul>
+     *   <li>{@link GoogleIdTokenInvalidException} (400) — token verify failed.</li>
+     *   <li>{@link GoogleEmailUnverifiedException} (400) — token's {@code email_verified} is false.</li>
+     *   <li>{@link UserNotFoundException} (404) — no user matches (intentionally the same
+     *       code whether the tenant doesn't exist or the email isn't on this tenant — don't
+     *       leak whether the email exists elsewhere).</li>
+     *   <li>{@link AccountLockedException} (423) — pre-existing lockout still applies.</li>
+     * </ul>
+     */
+    @Transactional
+    public AuthResult loginWithGoogle(String tenantSlug, String idToken) {
+        GoogleIdentity identity = googleVerifier.verify(idToken)
+                .orElseThrow(GoogleIdTokenInvalidException::new);
+        if (!identity.emailVerified()) {
+            throw new GoogleEmailUnverifiedException();
+        }
+        Tenant tenant = tenantRepository.findBySlug(tenantSlug)
+                .orElseThrow(UserNotFoundException::new);
+        TenantContext.set(tenant.getId());
+        tenantSession.bind();
+        OffsetDateTime now = OffsetDateTime.now(clock);
+
+        User user = userRepository.findByGoogleSub(identity.sub())
+                .or(() -> userRepository.findByEmail(identity.email())
+                        .filter(candidate -> candidate.getGoogleSub() == null)
+                        .map(candidate -> {
+                            // First time signing in with Google — link it atomically.
+                            candidate.linkGoogle(identity.sub(), identity.email(), now);
+                            return userRepository.save(candidate);
+                        }))
+                .orElseThrow(UserNotFoundException::new);
+
+        if (user.isLocked(now)) {
+            throw new AccountLockedException(user.getLockedUntil());
+        }
+        if (!user.isActive()) {
+            // Same 404 as "no user" so a deactivated account isn't enumerable.
+            throw new UserNotFoundException();
+        }
+
+        user.recordSuccessfulLogin(now);
+        userRepository.save(user);
+
+        String accessToken = issueAccessTokenFor(user, tenant);
+        String refreshToken = refreshTokenService.issue(user.getId(), user.getTenantId());
+        auditService.record(AuditActions.LOGIN, "USER", user.getId(), user.getTenantId(),
+                user.getId(), null, Map.of("method", "google"));
+        return new AuthResult(accessToken, jwtService.accessTokenTtl(),
+                refreshToken, properties.refreshTokenTtl(), user.getId(), user.getRole());
     }
 }

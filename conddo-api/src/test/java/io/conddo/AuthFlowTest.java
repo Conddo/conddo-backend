@@ -146,6 +146,37 @@ class AuthFlowTest {
     }
 
     /**
+     * Stub Google ID-token verifier (§1a). The default returns empty so every
+     * Google endpoint replies 400 GOOGLE_ID_TOKEN_INVALID; a specific test can
+     * call {@link GoogleVerifierTestConfig#stub} to make the next verify call
+     * return a specific identity.
+     */
+    @TestConfiguration
+    static class GoogleVerifierTestConfig {
+        static volatile io.conddo.core.auth.GoogleIdentity stubbed;
+
+        static void stub(io.conddo.core.auth.GoogleIdentity identity) {
+            stubbed = identity;
+        }
+
+        @Bean
+        @Primary
+        io.conddo.core.auth.GoogleIdTokenVerifier stubGoogleVerifier() {
+            return new io.conddo.core.auth.GoogleIdTokenVerifier() {
+                @Override
+                public java.util.Optional<io.conddo.core.auth.GoogleIdentity> verify(String idToken) {
+                    return java.util.Optional.ofNullable(stubbed);
+                }
+
+                @Override
+                public boolean isConfigured() {
+                    return true;
+                }
+            };
+        }
+    }
+
+    /**
      * Recording stub for the Studio job-intake gateway. Returns empty (so existing
      * website-change-request tests still see {@code PENDING}); exposes the last
      * call's args so the tenant-activated auto-create flow can be asserted.
@@ -1435,6 +1466,7 @@ class AuthFlowTest {
                                 "adminEmail", "owner@auto-glam.test", "adminPassword", PASSWORD))))
                 .andExpect(status().isCreated());
 
+        awaitStudioGatewayCall();
         assertNotNull(StudioGatewayTestConfig.lastBrief,
                 "TenantActivationListener should have called the Studio gateway");
         assertEquals("WEBSITE_BUILD", StudioGatewayTestConfig.lastJobType);
@@ -1453,6 +1485,7 @@ class AuthFlowTest {
                                 "verticalId", "beauty-and-wellness", "planId", "business",
                                 "adminEmail", "owner@auto-bella.test", "adminPassword", PASSWORD))))
                 .andExpect(status().isCreated());
+        awaitStudioGatewayCall();
         assertEquals("BOOKING_FOCUSED", StudioGatewayTestConfig.lastBrief.get("websiteType"));
 
         // Pro retail routes to ECOMMERCE.
@@ -1462,7 +1495,88 @@ class AuthFlowTest {
                                 "verticalId", "retail", "planId", "pro",
                                 "adminEmail", "owner@auto-mart.test", "adminPassword", PASSWORD))))
                 .andExpect(status().isCreated());
+        awaitStudioGatewayCall();
         assertEquals("ECOMMERCE", StudioGatewayTestConfig.lastBrief.get("websiteType"));
+    }
+
+    /** Polls up to 5s for the {@code @Async} TenantActivationListener to call the gateway. */
+    private static void awaitStudioGatewayCall() throws InterruptedException {
+        for (int i = 0; i < 50 && StudioGatewayTestConfig.lastBrief == null; i++) {
+            Thread.sleep(100);
+        }
+    }
+
+    // ----- Google Sign-in (§1a) -----------------------------------------------
+
+    @Test
+    void googleLoginFailsWhenTokenCannotBeVerified() throws Exception {
+        // Stub returns null → verifier returns empty → 400 GOOGLE_ID_TOKEN_INVALID.
+        GoogleVerifierTestConfig.stub(null);
+        mockMvc.perform(post("/auth/google").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("idToken", "fake.token", "tenantSlug", "anything"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("GOOGLE_ID_TOKEN_INVALID"));
+    }
+
+    @Test
+    void googleLoginFailsWhenEmailUnverified() throws Exception {
+        GoogleVerifierTestConfig.stub(new io.conddo.core.auth.GoogleIdentity(
+                "google-sub-1", "owner@example.com", false, "Owner"));
+        mockMvc.perform(post("/auth/google").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("idToken", "fake.token", "tenantSlug", "anything"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("GOOGLE_EMAIL_UNVERIFIED"));
+    }
+
+    @Test
+    void googleLoginLinksExistingPasswordUserAndIssuesTokens() throws Exception {
+        String slug = "google-link";
+        String email = "owner@" + slug + ".test";
+        signup(slug, email);   // existing password-based user, no google_sub yet
+
+        GoogleVerifierTestConfig.stub(new io.conddo.core.auth.GoogleIdentity(
+                "google-sub-link-1", email, true, "Owner"));
+
+        MvcResult login = mockMvc.perform(post("/auth/google").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("idToken", "fake.token", "tenantSlug", slug))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                .andReturn();
+        String setCookie = login.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertNotNull(setCookie, "google login must also issue the refresh cookie");
+
+        // Verify the user row was actually linked (read as owner to bypass RLS).
+        try (Connection owner = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             PreparedStatement ps = owner.prepareStatement(
+                     "SELECT google_sub FROM users WHERE email = ?")) {
+            ps.setString(1, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals("google-sub-link-1", rs.getString(1),
+                        "first-time Google sign-in should atomically write google_sub");
+            }
+        }
+    }
+
+    @Test
+    void googleLoginUnknownUserIs404() throws Exception {
+        GoogleVerifierTestConfig.stub(new io.conddo.core.auth.GoogleIdentity(
+                "google-sub-unknown", "ghost@example.com", true, "Ghost"));
+        mockMvc.perform(post("/auth/google").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("idToken", "fake.token", "tenantSlug", "nope"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    void googleStartRegisterIsRejectedOnUnverifiedEmail() throws Exception {
+        GoogleVerifierTestConfig.stub(new io.conddo.core.auth.GoogleIdentity(
+                "google-sub-reg", "new-owner@example.com", false, "New Owner"));
+        mockMvc.perform(post("/auth/register/start-google").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("idToken", "fake.token", "phone", "+2349011111111"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("GOOGLE_EMAIL_UNVERIFIED"));
     }
 
     // ----- helpers ---------------------------------------------------------
