@@ -1,19 +1,23 @@
 package io.conddo.studio.web;
 
 import io.conddo.studio.common.ApiResponse;
+import io.conddo.studio.dsl.DesignStandardService;
 import io.conddo.studio.jobs.JobService;
 import io.conddo.studio.jobs.JobTypeService;
 import io.conddo.studio.staff.StaffService;
 import io.conddo.studio.web.dto.AdminDashboardResponse;
+import io.conddo.studio.web.dto.CreateDesignStandardRequest;
 import io.conddo.studio.web.dto.CreateJobRequest;
 import io.conddo.studio.web.dto.CreateJobTypeRequest;
 import io.conddo.studio.web.dto.CreateStaffRequest;
+import io.conddo.studio.web.dto.DesignStandardDto;
 import io.conddo.studio.web.dto.EscalateRequest;
 import io.conddo.studio.web.dto.ExtendSlaRequest;
 import io.conddo.studio.web.dto.JobDetailResponse;
 import io.conddo.studio.web.dto.JobTypeDto;
 import io.conddo.studio.web.dto.ReassignRequest;
 import io.conddo.studio.web.dto.StaffDto;
+import io.conddo.studio.web.dto.UpdateDesignStandardRequest;
 import io.conddo.studio.web.dto.UpdateJobTypeRequest;
 import io.conddo.studio.web.dto.UpdateStaffRequest;
 import jakarta.validation.Valid;
@@ -27,6 +31,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -41,12 +46,15 @@ public class AdminController {
     private final JobService jobService;
     private final StaffService staffService;
     private final JobTypeService jobTypeService;
+    private final DesignStandardService designStandardService;
 
     public AdminController(JobService jobService, StaffService staffService,
-                           JobTypeService jobTypeService) {
+                           JobTypeService jobTypeService,
+                           DesignStandardService designStandardService) {
         this.jobService = jobService;
         this.staffService = staffService;
         this.jobTypeService = jobTypeService;
+        this.designStandardService = designStandardService;
     }
 
     @GetMapping("/dashboard")
@@ -132,6 +140,51 @@ public class AdminController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> disableJobType(@PathVariable String id) {
         jobTypeService.disable(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ----- Design Standard Library (Phase 8 §8) ------------------------------
+
+    /** Curated palettes / layouts / copy patterns / typography — visible to leads + admins. */
+    @GetMapping("/design-standards")
+    public ApiResponse<List<DesignStandardDto>> listDesignStandards(
+            @RequestParam(required = false) String kind) {
+        List<DesignStandardDto> body = (kind == null || kind.isBlank()
+                ? designStandardService.list()
+                : designStandardService.byKind(kind))
+                .stream().map(DesignStandardDto::from).toList();
+        return ApiResponse.ok(body);
+    }
+
+    @GetMapping("/design-standards/{id}")
+    public ApiResponse<DesignStandardDto> getDesignStandard(@PathVariable UUID id) {
+        return ApiResponse.ok(DesignStandardDto.from(designStandardService.get(id)));
+    }
+
+    /** Add a new standard. ADMIN-only — DSL is curated content, not produced day-to-day. */
+    @PostMapping("/design-standards")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<DesignStandardDto>> createDesignStandard(
+            @Valid @RequestBody CreateDesignStandardRequest request) {
+        DesignStandardDto body = DesignStandardDto.from(designStandardService.create(
+                request.vertical(), request.kind(), request.name(),
+                request.description(), request.content()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
+    }
+
+    @PatchMapping("/design-standards/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<DesignStandardDto> updateDesignStandard(@PathVariable UUID id,
+                                                               @Valid @RequestBody UpdateDesignStandardRequest request) {
+        return ApiResponse.ok(DesignStandardDto.from(designStandardService.update(id,
+                request.vertical(), request.name(), request.description(),
+                request.content(), request.active())));
+    }
+
+    @DeleteMapping("/design-standards/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> disableDesignStandard(@PathVariable UUID id) {
+        designStandardService.disable(id);
         return ResponseEntity.noContent().build();
     }
 }
