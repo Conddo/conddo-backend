@@ -1,6 +1,8 @@
 package io.conddo.api.web;
 
 import io.conddo.core.auth.AccountLockedException;
+import io.conddo.core.auth.GoogleEmailUnverifiedException;
+import io.conddo.core.auth.GoogleIdTokenInvalidException;
 import io.conddo.core.auth.InvalidCredentialsException;
 import io.conddo.core.auth.InvalidOtpException;
 import io.conddo.core.auth.InvalidPasswordResetTokenException;
@@ -8,6 +10,8 @@ import io.conddo.core.auth.InvalidRefreshTokenException;
 import io.conddo.core.auth.OtpThrottledException;
 import io.conddo.core.auth.PhoneNotVerifiedException;
 import io.conddo.core.auth.RegistrationNotFoundException;
+import io.conddo.core.auth.UserAlreadyExistsException;
+import io.conddo.core.auth.UserNotFoundException;
 import io.conddo.core.common.ApiError;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.common.NotFoundException;
@@ -105,6 +109,31 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handlePhoneNotVerified(PhoneNotVerifiedException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.fail(ApiError.of("AUTH_PHONE_NOT_VERIFIED", ex.getMessage())));
+    }
+
+    @ExceptionHandler(GoogleIdTokenInvalidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGoogleIdTokenInvalid(GoogleIdTokenInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("GOOGLE_ID_TOKEN_INVALID", ex.getMessage())));
+    }
+
+    @ExceptionHandler(GoogleEmailUnverifiedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGoogleEmailUnverified(GoogleEmailUnverifiedException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("GOOGLE_EMAIL_UNVERIFIED", ex.getMessage())));
+    }
+
+    /** Single 404 for "no user matches" — see {@link UserNotFoundException} for the anti-enumeration note. */
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserNotFound(UserNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.fail(ApiError.of("USER_NOT_FOUND", ex.getMessage())));
+    }
+
+    @ExceptionHandler(UserAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserAlreadyExists(UserAlreadyExistsException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("USER_ALREADY_EXISTS", ex.getMessage())));
     }
 
     /**

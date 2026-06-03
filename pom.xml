@@ -35,6 +35,9 @@
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <minio.version>8.5.12</minio.version>
+        <!-- Google ID-token verification (Slice H / §1a). Pulls google-oauth-client,
+             google-http-client, and the JWKS plumbing for /auth/google. -->
+        <google.api.client.version>2.7.0</google.api.client.version>
         <!--
           Override Spring Boot's managed Testcontainers (1.19.x → docker-java 3.3.6,
           which defaults to Docker API 1.32). Modern Docker Engines (29.x) require a
@@ -57,6 +60,12 @@
                 <groupId>io.minio</groupId>
                 <artifactId>minio</artifactId>
                 <version>${minio.version}</version>
+            </dependency>
+            <!-- Google API client for ID-token verification (Slice H). -->
+            <dependency>
+                <groupId>com.google.api-client</groupId>
+                <artifactId>google-api-client</artifactId>
+                <version>${google.api.client.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -2,6 +2,7 @@ package io.conddo.api.web;
 
 import io.conddo.api.security.RefreshCookies;
 import io.conddo.api.web.dto.CompleteRegistrationRequest;
+import io.conddo.api.web.dto.GoogleRegisterStartRequest;
 import io.conddo.api.web.dto.LoginResponse;
 import io.conddo.api.web.dto.RegisterStartRequest;
 import io.conddo.api.web.dto.RegisterStartResponse;
@@ -42,6 +43,19 @@ public class RegistrationController {
     public ResponseEntity<ApiResponse<RegisterStartResponse>> start(@Valid @RequestBody RegisterStartRequest request) {
         RegistrationService.StartResult result = registrationService.start(
                 request.fullName(), request.phone(), request.email(), request.password());
+        return ResponseEntity.ok(ApiResponse.ok(RegisterStartResponse.from(result)));
+    }
+
+    /**
+     * Start signup with a Google ID token (ACTION_LIST §1a). Returns the same
+     * {@link RegisterStartResponse} as {@code /start}; the rest of the wizard
+     * ({@code /verify}, {@code /resend}, {@code /complete}) is unchanged.
+     */
+    @PostMapping("/start-google")
+    public ResponseEntity<ApiResponse<RegisterStartResponse>> startWithGoogle(
+            @Valid @RequestBody GoogleRegisterStartRequest request) {
+        RegistrationService.StartResult result = registrationService.startWithGoogle(
+                request.idToken(), request.phone());
         return ResponseEntity.ok(ApiResponse.ok(RegisterStartResponse.from(result)));
     }
 

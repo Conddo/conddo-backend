@@ -31,7 +31,9 @@ class StudioJobGatewayTest {
     void postsSignedIntakeAndParsesTheJobHandle() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        HttpStudioJobGateway gateway = new HttpStudioJobGateway(builder, "https://studio.test", "svc-token-123");
+        // null factory override → gateway honours the MockRestServiceServer's bound factory.
+        HttpStudioJobGateway gateway = new HttpStudioJobGateway(
+                builder, "https://studio.test", "svc-token-123", null);
 
         UUID tenantId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
@@ -57,7 +59,7 @@ class StudioJobGatewayTest {
 
     @Test
     void unconfiguredGatewayIsANoOp() {
-        HttpStudioJobGateway gateway = new HttpStudioJobGateway(RestClient.builder(), "", "");
+        HttpStudioJobGateway gateway = new HttpStudioJobGateway(RestClient.builder(), "", "", null);
         assertThat(gateway.createJob(UUID.randomUUID(), "WEBSITE_BUILD", "t", Map.of())).isEmpty();
     }
 }

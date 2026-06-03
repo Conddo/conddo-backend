@@ -59,6 +59,15 @@ public class PendingRegistration {
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 
+    /**
+     * Google sub stashed when signup started via {@code /auth/register/start-google},
+     * so the platform user created in {@link io.conddo.core.auth.RegistrationService#complete}
+     * has its {@code google_sub} written in the same transaction (no second-step link race).
+     * Null for password-only signups.
+     */
+    @Column(name = "google_sub")
+    private String googleSub;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -68,6 +77,13 @@ public class PendingRegistration {
 
     public PendingRegistration(String fullName, String phone, String email, String passwordHash,
                                String otpHash, OffsetDateTime otpExpiresAt, OffsetDateTime sentAt) {
+        this(fullName, phone, email, passwordHash, otpHash, otpExpiresAt, sentAt, null);
+    }
+
+    /** Full constructor — Google sub is set for {@code start-google} signups, null otherwise. */
+    public PendingRegistration(String fullName, String phone, String email, String passwordHash,
+                               String otpHash, OffsetDateTime otpExpiresAt, OffsetDateTime sentAt,
+                               String googleSub) {
         this.fullName = fullName;
         this.phone = phone;
         this.email = email;
@@ -75,6 +91,7 @@ public class PendingRegistration {
         this.otpHash = otpHash;
         this.otpExpiresAt = otpExpiresAt;
         this.lastOtpSentAt = sentAt;
+        this.googleSub = googleSub;
     }
 
     public boolean isCompleted() {
@@ -165,6 +182,10 @@ public class PendingRegistration {
 
     public OffsetDateTime getCompletedAt() {
         return completedAt;
+    }
+
+    public String getGoogleSub() {
+        return googleSub;
     }
 
     public OffsetDateTime getCreatedAt() {
