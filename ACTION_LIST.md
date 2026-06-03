@@ -309,6 +309,167 @@ Original requirements (kept for reference; all satisfied):
   `X-Tenant-Id` (tenant comes from the JWT), and only sees their tenant's data;
   refresh rotation + lockout covered by tests.
 
+### 1a. Google Sign-in (OAuth2)  ⬜ TODO (extends item 1)
+
+Adds a second login factor alongside email+password and a second signup path
+alongside the staged phone-OTP flow. Frontend uses Google Identity Services
+(GIS) client-side to obtain an ID token; backend verifies the token's
+signature against Google's public keys (JWKS), maps the Google `sub` claim
+to a `users` row, and returns the same `LoginResponse` envelope the existing
+`/auth/login` returns. **No new session machinery** — Google is just a
+credential check that issues the same access token + refresh cookie pair.
+
+#### Why ID-token verify, not server-side OAuth code exchange
+
+GIS gives the browser a signed JWT (`id_token`) directly. We forward that to
+the backend, which verifies it against Google's JWKS endpoint
+(`https://www.googleapis.com/oauth2/v3/certs`) plus an `aud` check against our
+client ID. We never store Google access tokens or refresh tokens — we don't
+need them. Future "Sign in with Google to access Drive/Calendar" features
+would migrate to the auth-code flow; today's scope is identity only.
+
+#### Schema change (V6 or current pending)
+
+```sql
+ALTER TABLE users
+  ADD COLUMN google_sub TEXT UNIQUE,           -- Google's immutable user id
+  ADD COLUMN google_email TEXT,                -- last seen Google email (informational)
+  ADD COLUMN google_linked_at TIMESTAMPTZ;
+
+CREATE INDEX idx_users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
+```
+
+A user MAY have both a password hash AND a `google_sub` — they're independent
+credentials on the same identity. Signing in via either issues the same session.
+
+#### Endpoints
+
+```
+POST /auth/google                                      Sign in with Google
+  Body: { idToken: string, tenantSlug: string }
+  Behaviour:
+    1. Verify idToken (issuer https://accounts.google.com, aud == client_id,
+       exp not past, sig OK against JWKS).
+    2. Look up user by (tenantSlug, google_sub).
+       - Match → success path (5).
+    3. If no google_sub match, look up by (tenantSlug, email == idToken.email)
+       AND idToken.email_verified == true.
+       - Match → first time signing in with Google: link the account (set
+         google_sub, google_email, google_linked_at), then success path.
+    4. No match → 404 USER_NOT_FOUND.
+    5. Issue the same LoginResponse as /auth/login (access token in body,
+       refresh cookie via Set-Cookie). Audit log: LOGIN_SUCCESS, method=google.
+  Responses:
+    200 LoginResponse                              (signed in, possibly linked)
+    400 { code: "GOOGLE_ID_TOKEN_INVALID" }        (verify failed)
+    400 { code: "GOOGLE_EMAIL_UNVERIFIED" }        (idToken.email_verified=false)
+    404 { code: "USER_NOT_FOUND" }                 (no user for that tenant+identity)
+    423 { code: "AUTH_ACCOUNT_LOCKED" }            (LockoutPolicy still applies — Google
+                                                    failures count toward the same counter)
+
+
+POST /auth/register/start-google                       Start signup with Google
+  Body: { idToken: string, phone: string }
+  Behaviour:
+    1. Verify idToken (same as above).
+    2. Reject if idToken.email is already used by any user in any tenant
+       (existing /auth/register/start contract — emails are globally unique).
+    3. Create a registration record with:
+         - email      ← idToken.email (must be email_verified)
+         - fullName   ← idToken.name (fallback: idToken.given_name + family_name)
+         - phone      ← request.phone (Google can't be trusted for this — Nigerian
+                        SMS verification is non-negotiable)
+         - password   ← random 64-char (the user authenticates via Google going
+                        forward; we still set a password so /auth/forgot-password
+                        works if they later want it)
+         - googleSub  ← idToken.sub (stored on the registration row; copied to
+                        users.google_sub at /complete time)
+    4. Issue an OTP to phone (existing /auth/register/start otp pipeline).
+    5. Return same RegisterStartResponse as /auth/register/start.
+  Responses:
+    200 { registrationId, resendCooldownSeconds }
+    400 { code: "GOOGLE_ID_TOKEN_INVALID" }
+    400 { code: "GOOGLE_EMAIL_UNVERIFIED" }
+    409 { code: "USER_ALREADY_EXISTS" }
+
+  After this, the user continues through /auth/register/verify and
+  /auth/register/complete unchanged — `complete` reads googleSub off the
+  registration row and writes it to users.google_sub.
+```
+
+#### Optional convenience endpoint (later)
+
+```
+POST /auth/google/link                                 Link Google to a logged-in user
+  Auth: required (Bearer)
+  Body: { idToken: string }
+  → 200 { google_email }                               sets users.google_sub
+  → 409 GOOGLE_ALREADY_LINKED                          sub belongs to another user
+```
+
+Not required for V1 — first sign-in handles linking automatically (step 3 of
+`POST /auth/google`). Build only if there's a UX need to link before first
+Google sign-in.
+
+#### Verification mechanics
+
+Use `google-api-client` (Java) or roll our own:
+
+```java
+GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(transport, jsonFactory)
+    .setAudience(Collections.singletonList(googleClientId))
+    .build();
+GoogleIdToken token = verifier.verify(idTokenString);
+if (token == null) throw new GoogleIdTokenInvalidException();
+Payload p = token.getPayload();
+if (!Boolean.TRUE.equals(p.getEmailVerified())) throw new GoogleEmailUnverifiedException();
+// p.getSubject()   → google_sub
+// p.getEmail()     → idToken.email
+// p.get("name")    → full name
+```
+
+JWKS keys must be **cached with the TTL Google's response headers specify**
+(typically 6h). Don't re-fetch on every request.
+
+#### Environment variables
+
+```
+GOOGLE_OAUTH_CLIENT_ID=<from Google Cloud Console → APIs & Services → Credentials>
+# No client secret needed — ID-token verify only.
+```
+
+Add `https://app.conddo.io`, `https://*.conddo.io` (or your prod origins) and
+`http://localhost:3000` (dev) to the OAuth client's **Authorized JavaScript
+origins** in Google Cloud Console. No redirect URIs needed (GIS popup runs
+client-side).
+
+#### Frontend side (Conddo-app — already in flight)
+
+```
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=<same client id as backend>
+```
+
+The "Continue with Google" buttons on /login and /onboarding/create-account
+(currently `href="#"` placeholders) use `@react-oauth/google`'s `useGoogleLogin`
+hook in `id_token` flow mode, then POST to the new endpoints above.
+
+#### Audit + security notes
+
+- `LOGIN_SUCCESS` audit row carries `method=google` so the operations team
+  can distinguish password vs. Google logins.
+- `LockoutPolicy` keys on `(email, tenant)` — a Google verify failure still
+  bumps the counter to prevent enumeration attacks.
+- The 404 for `USER_NOT_FOUND` is intentionally identical for "no Google sub"
+  and "no email match" — don't leak whether the email exists in another tenant.
+- ID tokens are short-lived (~1 hour); we verify the signature, audience,
+  expiry, and `email_verified` — that's the full Google guidance for sign-in.
+
+_Done when:_ a tenant user can click "Continue with Google" on the deployed
+frontend, complete the Google account chooser, and land on `/dashboard` with
+a valid session — never touching a password.
+
+---
+
 ### 2. Subdomain → tenant resolution via Redis (PRD §6.3)
 - `businessname.conddo.io` → resolve subdomain to `tenant_id`, cached in Redis
   (refresh ~5 min). Complements the JWT claim. Redis starter is already wired.
