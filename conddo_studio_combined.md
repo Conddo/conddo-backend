@@ -32,8 +32,8 @@
 18. [Docker Configuration](#18-docker-configuration)
 19. [Implementation Sequence](#19-implementation-sequence)
 20. ~~Implementation Rules for Agents~~ → moved to §23
-21. [Website Builder API](#21-website-builder-api)   *(post-V1)*
-22. [Job Export & Import](#22-job-export--import)   *(post-V1)*
+21. [Website Builder API](#21-website-builder-api--️-out-of-scope)   ⚠️ *OUT OF SCOPE — do not implement*
+22. [Job Export & Import](#22-job-export--import)   *(post-V1, IS the builder workflow)*
 23. [Platform Admin — Cross-Tenant Management](#23-platform-admin--cross-tenant-management)   *(post-V1)*
 24. [Implementation Rules for Agents](#24-implementation-rules-for-agents)
 
@@ -1936,17 +1936,10 @@ ADMIN (TEAM_LEAD and ADMIN only)
   GET    /admin/sla               SLA health overview
   PATCH  /admin/sla/settings      Update SLA thresholds
 
-BUILDER (see §21 for full spec)
-  GET    /jobs/:id/site                       Get the job's site (pages + sections + theme)
-  PUT    /jobs/:id/site                       Replace the entire site (for import / bulk save)
-  PATCH  /jobs/:id/site/theme                 Update theme (primary hex, fonts)
-  POST   /jobs/:id/site/pages                 Create a page
-  PATCH  /jobs/:id/site/pages/:pageId         Update page (title, slug, order)
-  DELETE /jobs/:id/site/pages/:pageId         Delete page
-  POST   /jobs/:id/site/pages/:pageId/sections             Add a section to a page
-  PATCH  /jobs/:id/site/pages/:pageId/sections/:sectionId  Update section content / order
-  DELETE /jobs/:id/site/pages/:pageId/sections/:sectionId  Remove a section
-  POST   /jobs/:id/site/publish                Mark current site state as the submitted build
+BUILDER — ⚠️ OUT OF SCOPE (do not implement; staff build externally)
+  ~~GET/PUT/PATCH/POST/DELETE /jobs/:id/site/**~~
+  Decision: §21 is retained for reference but the in-app builder is not on
+  the roadmap. The export/import endpoints below are the builder workflow.
 
 EXPORT / IMPORT (see §22 for full spec)
   GET    /jobs/:id/export                      Download job as a ZIP bundle (manifest + assets + site)
@@ -2253,19 +2246,15 @@ PHASE 10 — Testing and Polish (Week 12)
   ✓ Security: ensure no cross-staff data leakage
   Definition of done: all tests pass, ready for production
 
-PHASE 11 — Website Builder (post-V1)   ← see §21
-  ☐ V3__studio_builder.sql migration: sites, site_pages, site_sections
-  ☐ Site / Page / Section JPA entities with optimistic locking
-  ☐ SiteService: lazy-create on first GET; validate section content per type
-  ☐ BuilderController endpoints (see §15 BUILDER group)
-  ☐ Wire /jobs/:id/submit to auto-publish the site
-  ☐ Add site.section_updated + site.published SSE events to SseService
-  ☐ Section type catalogue (HERO/SERVICES/ABOUT/CTA/GALLERY/CONTACT/CUSTOM)
-  ☐ AI assistant writes directly into matching section content (existing
-    /ai-suggest endpoint now reads/writes site_sections instead of job.ai_suggestions)
-  Definition of done: a developer can build a full multi-page website in
-    Studio, see live changes via SSE, and submit it for QA without
-    leaving the app
+PHASE 11 — REMOVED (in-app builder is OUT OF SCOPE)
+  Decision: staff build the website in external tools (the existing Studio.io
+  workflow, VS Code locally, Figma, etc.). Conddo Studio's role for a build
+  job is to hand over the BRIEF + ASSETS + AI SUGGESTIONS + DESIGN STANDARDS,
+  not to host the website source. The export/import in Phase 12 is the
+  bridge — staff export a job, work on it externally, import the result.
+  §21 below is retained for context but marked "out of scope" — do not build
+  the Site / Page / Section endpoints. AI suggestions stay on the existing
+  jobs.ai_suggestions JSONB; no migration to site_sections.
 
 PHASE 13a — Platform Admin (read-only)   ← see §23
   ☐ V4__studio_platform_admin.sql: platform_admin_audit_log table
@@ -2287,28 +2276,52 @@ PHASE 13b — Platform Admin (mutations)   ← see §23
   Definition of done: Studio admin can suspend a tenant, change a
     user's role, force-reset a password — and every action is audited
 
-PHASE 12 — Job Export / Import (post-V1)   ← see §22
-  ☐ GET /jobs/:id/export — streams a ZIP (manifest, brief.md, site.json,
-    ai-suggestions.json, qa-history.json, activity.json, /assets/*)
+PHASE 12 — Job Export / Import (post-V1)   ← see §22  ⭐ THIS IS THE BUILDER WORKFLOW
+  ☐ GET /jobs/:id/export — streams a ZIP (manifest, brief.md,
+    ai-suggestions.json, qa-history.json, activity.json, /assets/*,
+    standards.json — the active design standards for this job's vertical)
   ☐ Server-side Cloudinary asset download (no redirect — bundle must
     work offline)
   ☐ SHA-256 checksum in manifest; verified on re-import
   ☐ POST /jobs/:id/import (multipart) — applies bundle atomically;
-    optimistic-lock check via manifest.job.version vs current
+    optimistic-lock check via manifest.job.version vs current. The
+    importable surface is intentionally narrow: brief edits,
+    ai-suggestions overrides, new assets dropped into /assets/, and an
+    optional studioUrl (the live external preview the staff built).
+    Anything else in the bundle is informational.
   ☐ Activity log: JOB_EXPORTED, JOB_IMPORTED entries
   ☐ Env vars: STUDIO_EXPORT_ASSET_INLINE_MAX_BYTES (50 MB default),
     STUDIO_IMPORT_MAX_BYTES (256 MB default)
-  Definition of done: a staff member can export a job, work on it
-    locally (edit the brief, run AI prompts offline, drop new assets
-    in /assets/), and re-import to overwrite cloud state — with a
-    clear 409 if someone else changed the job meanwhile
+  Definition of done: a staff member can export a job, build the
+    website externally with the brief + standards + assets in hand,
+    and re-import with the studioUrl + any new draft files. The actual
+    website lives wherever the staff built it (Vercel, Netlify, the
+    customer's hosting, etc.) — Studio just tracks the link and assets.
 ```
 
 ---
 
-## 21. Website Builder API
+## 21. Website Builder API — ⚠️ OUT OF SCOPE
 
-**Status:** Not yet implemented. Currently the developer builds the website in an
+> **Status: WILL NOT BE BUILT.** Decision (2026-06-03): staff continue to
+> build websites in external tools — Studio.io, VS Code locally, Figma,
+> Framer, the customer's own hosting, etc. Conddo Studio's role for a
+> website-build job is to be the **system of record for the brief, assets,
+> AI suggestions, design standards, and QA history** — *not* to host the
+> website itself.
+>
+> What replaces the in-app builder: the **§22 Export/Import** loop. Staff
+> export a job → get a ZIP with everything they need → build externally →
+> import the bundle back with the `studioUrl` and any new asset files. The
+> live site lives wherever they deployed it.
+>
+> The rest of this section (Site / Page / Section domain model, V3
+> migration, endpoint catalogue, section type catalogue) is **retained for
+> reference only** — do not implement. AI suggestions stay on the existing
+> `jobs.ai_suggestions` JSONB. The "BUILDER" group in §15 should be
+> considered struck through.
+
+**Status (original, kept for context):** Currently the developer builds the website in an
 external Studio tool and submits its URL via `/jobs/:id/submit`. This section
 specifies the in-app builder backend so that flow can move inside Conddo Studio.
 
@@ -2451,20 +2464,25 @@ matching section's `content` when one exists.
 Add to `SseService` broadcast set:
 
 ```
-site.section_updated   { jobId, pageId, sectionId, version }
-site.published          { jobId, version, publishedAt }
+~~site.section_updated~~   ⚠️ NOT NEEDED (builder is out of scope, §21)
+~~site.published~~          ⚠️ NOT NEEDED (builder is out of scope, §21)
 ```
 
-Both filtered to: the assignee, all TEAM_LEAD/ADMIN, and (for cross-staff
-collaboration later) any other staff currently subscribed to the same job.
+These events were specced when the in-app builder was planned. Since the
+builder is now out of scope, neither event needs to be built. The §22
+Export/Import flow's `JOB_IMPORTED` activity event (broadcast via the
+existing job lifecycle stream) covers the "site state changed" notification
+need.
 
 ---
 
 ## 22. Job Export & Import
 
-**Status:** Not yet implemented. Required so staff can take a job off the
-cloud, work on it on their local machine (offline or in their preferred local
-tools), and re-import their changes when they're back online.
+**Status:** Not yet implemented. This **is the builder workflow** — staff
+export a job, build the website externally (in Studio.io, VS Code, Figma,
+etc.), then re-import the result. Conddo Studio is the system of record
+for the brief, assets, AI suggestions, design standards, and QA history;
+the actual website lives wherever the staff deployed it.
 
 ### 22.1 The Bundle (ZIP)
 
@@ -2475,14 +2493,19 @@ tools), and re-import their changes when they're back online.
 ├── manifest.json           ← spec below; the source of truth on import
 ├── brief.md                ← human-readable rendering of the brief
 ├── README.md               ← "what to do with this bundle" for the staff member
-├── site.json               ← snapshot of /jobs/:id/site (when builder exists)
 ├── ai-suggestions.json     ← snapshot of job.ai_suggestions per section
+├── standards.json          ← active design standards for this job's vertical
 ├── qa-history.json         ← every QA review with checklist + notes
 ├── activity.json           ← full activity log
 └── assets/
     ├── <assetId>--<filename>     ← every job asset downloaded from Cloudinary
     └── …
 ```
+
+The bundle is **everything the staff member needs to build externally** —
+brief, AI-generated copy, vertical-specific design standards, customer
+assets, and a full record of prior QA feedback (so a revision job knows
+what was returned and why).
 
 Filenames in `/assets/` follow `<assetId>--<original_filename>` so re-import
 can map back to the existing asset row instead of duplicating.
@@ -2502,9 +2525,9 @@ can map back to the existing asset row instead of duplicating.
     "jobType": "WEBSITE_BUILD",
     "status": "IN_PROGRESS",
     "tenantId": "uuid",
-    "brief": { /* …full JSONB… */ }
+    "brief": { /* …full JSONB… */ },
+    "studioUrl": "https://lagos-cuts.studio.io"   // last known external preview, may be null
   },
-  "site": { "version": 4, "status": "DRAFT" },   // brief reference; full state in site.json
   "assets": [
     { "id": "uuid", "filename": "logo.png", "bytes": 41229, "sha256": "..." }
   ],
@@ -2535,21 +2558,25 @@ Server pipeline:
    so the client can offer "force overwrite" or "fetch newer and merge".
 5. **Apply, atomically (single transaction):**
    - `brief` → overwrite `job.brief` JSONB
-   - `site.json` → `PUT /site` semantics (replace pages + sections + theme)
    - `ai-suggestions.json` → merge into `job.ai_suggestions`
+   - `studioUrl` (from manifest.job.studioUrl, if present) → overwrite `job.studioUrl`
+     so the new external preview link replaces the old one
    - Each file in `/assets/<assetId>--*`:
      - If `assetId` exists on the job → re-upload to Cloudinary with same
        `public_id` (overwrites), update `bytes`/`sha256`/`updated_at`
      - If new → upload, create a new asset row
    - Assets that exist on the job but are *missing* from the bundle are
      **kept** (import is additive — to delete, use `DELETE /assets/:id`)
+   - `standards.json`, `qa-history.json`, `activity.json`, `brief.md`,
+     `README.md` are **informational only** — never written back
+     (qa-history and activity are server-of-record; standards are global).
 6. **Increment `Job.version`** and append `JOB_IMPORTED` to the activity log
    with `{ exportedAt, fileCount, assetCount }` in the detail field.
 7. Broadcast `job.imported` SSE event.
 
 Response:
 ```
-200 { job: <JobDetail>, applied: { brief: true, site: true, assets: { updated: 4, created: 1 } } }
+200 { job: <JobDetail>, applied: { brief: true, studioUrl: true, assets: { updated: 4, created: 1 } } }
 ```
 
 ### 22.4 Endpoint Contracts

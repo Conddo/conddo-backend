@@ -22,6 +22,7 @@ If you change an endpoint contract, search this doc for the path and update the
 | **SSE wired** — singleton stream, replaces 30s polling, live job-board / QA-queue / admin-dashboard refresh, `notification.created` increments bell | conddo-studio `37cf235` | ✅ deployed |
 | **Job Types admin page** — `/admin/job-types`, full CRUD + SLA tuning + QA checklist editor, role-gated UI (ADMIN mutates, TEAM_LEAD reads) | conddo-studio `fb8aa40` | ✅ deployed |
 | **Platform Admin spec'd** — new §23 + Phase 13a/13b in `conddo_studio_combined.md`. Studio ADMIN gets cross-tenant management (tenants + tenant users). Backend not yet built. | backend `e1dca7d` | 📋 spec only |
+| **§21 In-app Website Builder marked OUT OF SCOPE.** Decision: staff continue to build externally; Conddo Studio is the system of record for brief + assets + AI suggestions + standards + QA history, **not** the website source. Export/import (§22) is the bridge to external tooling. No `Site`/`Page`/`Section` entities, no V3 builder migration. | backend (next commit) | 📋 decision |
 | **Operational note added** — `STUDIO_BASE_URL` + `STUDIO_SERVICE_TOKEN` must be set on `conddo-backend` Render service or signup → Studio job hand-off silently no-ops. Hit this in production. | backend `e1dca7d` | 📋 ops action |
 
 The new backend endpoints from the last handoff (SSE, Job Types CRUD,
@@ -245,9 +246,9 @@ Mostly the same shape as conddo-app's, with these specific differences:
 
 | Pending (backend) | FE state | Spec |
 |---|---|---|
-| **Website Builder API** (POST/PATCH/GET on `/jobs/:id/site/**`) | Builder route is a "coming soon" placeholder. AI section endpoints (`/ai-suggest`, `/palette`, `/rank-images`) are wired but no Section to write into yet. | `conddo_studio_combined.md` §21 — full design including V3 migration |
-| **Job Export / Import** (`GET /jobs/:id/export`, `POST /jobs/:id/import`) | No FE yet; will add a download button + import drop zone on job detail once endpoints exist. | `conddo_studio_combined.md` §22 — full design including manifest.json schema |
+| **Job Export / Import** (`GET /jobs/:id/export`, `POST /jobs/:id/import`) ⭐ THE BUILDER WORKFLOW | No FE yet. The job-detail page is the staff member's "control center" — they read the brief, see assets, see AI suggestions, then click Export to take the bundle off-cloud and build externally. Import re-attaches the new studioUrl + any modified files. | `conddo_studio_combined.md` §22 — bundle = manifest.json + brief.md + ai-suggestions.json + standards.json + qa-history.json + activity.json + /assets/* |
 | **Platform Admin — Cross-Tenant Management** (NEW: `GET/PATCH/DELETE /api/jobs/admin/platform/tenants/**` + `GET/PATCH/DELETE /api/jobs/admin/platform/users/**`) | Studio ADMIN today can only manage internal Handel Cores staff. We need to manage all platform tenants + users from the same Studio (you asked for this after a real-user signup post-mortem). | `conddo_studio_combined.md` §23 — full design with Phase 13a (read-only) + 13b (mutations) |
+| ~~Website Builder API~~ | **OUT OF SCOPE** — decision 2026-06-03. Staff build externally (Studio.io, VS Code, Figma, customer's hosting). Export/Import is the bridge. | §21 retained for reference only — do not implement |
 
 ### Pending — FE work against already-shipped backend endpoints
 
@@ -274,7 +275,16 @@ In the order that gives the most FE win per backend hour:
    POST /auth/google currently 404s. Estimated backend effort: small (1 schema
    column, 2 endpoints, ID-token verification using `google-api-client`).
 
-2. **Platform Admin — read-only first, then mutations** (`conddo_studio_combined.md §23`)
+2. **Studio Export/Import** (`conddo_studio_combined.md §22`) ⭐ **This is the
+   builder workflow now** (in-app builder is out of scope per the 2026-06-03
+   decision). Two endpoints, both on existing `/api/jobs/:id/`. The bundle is
+   a ZIP with manifest.json + brief.md + ai-suggestions.json + standards.json
+   + qa-history.json + activity.json + /assets/*. Import is intentionally
+   narrow (brief, ai-suggestions, studioUrl, new assets) — qa-history /
+   activity / standards never written back. Needs a ZIP streamer and
+   Cloudinary server-side download (no redirects — bundle must work offline).
+
+3. **Platform Admin — read-only first, then mutations** (`conddo_studio_combined.md §23`)
    ⭐ requested after a real-user signup post-mortem. Studio ADMINs currently
    can only manage internal Handel Cores staff (`studio.staff` table) — they
    cannot see or modify tenants / tenant users. Two-phase delivery in the spec:
@@ -286,20 +296,13 @@ In the order that gives the most FE win per backend hour:
      password reset, last-admin protection, refresh-token revocation, and new
      SSE events (`platform.tenant_status_changed`, `platform.user_deactivated`).
 
-3. **Studio Builder API** (`conddo_studio_combined.md §21`) ⭐ unblocks the
-   in-app website builder, currently an empty-state placeholder on the Studio.
-   Schema migration + endpoint surface. The AI assistant should write directly
-   into the new `site_sections.content` JSONB instead of the existing
-   `jobs.ai_suggestions` field.
-
-4. **Studio Export/Import** (`conddo_studio_combined.md §22`) ⭐ requested by
-   ops staff so they can work locally. Two endpoints; needs a ZIP streamer
-   and Cloudinary server-side download. Independent of #3.
-
-5. **(In flight, already partially shipped)** SLA monitor — `phase1/studio-sla-monitor`
+4. **(In flight, already partially shipped)** SLA monitor — `phase1/studio-sla-monitor`
    worktree adds the `@Scheduled` walk that emits `sla.tick`. The Studio FE
    admin dashboard already subscribes to that event (commit 37cf235). No FE
    work needed when this lands.
+
+~~5. Website Builder API~~ — **REMOVED FROM ROADMAP** (was §21). Decision:
+   staff continue to build externally; export/import (#2 above) is the bridge.
 
 ---
 
