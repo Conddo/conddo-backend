@@ -4,6 +4,7 @@ import io.conddo.studio.common.ApiError;
 import io.conddo.studio.common.ApiResponse;
 import io.conddo.studio.common.ConflictException;
 import io.conddo.studio.common.InvalidCredentialsException;
+import io.conddo.studio.common.LastAdminProtectedException;
 import io.conddo.studio.common.NotFoundException;
 import io.conddo.studio.storage.StorageException;
 import org.springframework.http.HttpStatus;
@@ -46,6 +47,13 @@ public class StudioExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleConflict(ConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.fail(ApiError.of("CONFLICT", ex.getMessage())));
+    }
+
+    /** §23.5 — refuse to leave a tenant without any active TENANT_ADMIN. */
+    @ExceptionHandler(LastAdminProtectedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLastAdmin(LastAdminProtectedException ex) {
+        return ResponseEntity.unprocessableEntity()
+                .body(ApiResponse.fail(ApiError.of("LAST_ADMIN_PROTECTED", ex.getMessage())));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

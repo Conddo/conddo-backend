@@ -31,3 +31,18 @@ CREATE TABLE IF NOT EXISTS public.users (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     google_sub     TEXT
 );
+
+-- Phase 13b's mutators revoke refresh tokens for suspended tenants and
+-- deactivated users. The Studio service writes UPDATEs against this table.
+CREATE TABLE IF NOT EXISTS public.refresh_tokens (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    tenant_id      UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    family_id      UUID NOT NULL,
+    selector       TEXT NOT NULL UNIQUE,
+    token_hash     TEXT NOT NULL,
+    expires_at     TIMESTAMPTZ NOT NULL,
+    revoked_at     TIMESTAMPTZ,
+    revoked_reason TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);

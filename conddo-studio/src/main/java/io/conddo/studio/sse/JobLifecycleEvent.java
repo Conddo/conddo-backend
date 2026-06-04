@@ -62,5 +62,41 @@ public sealed interface JobLifecycleEvent {
     /** A new in-app notification was created — direct send to its target staff. */
     record NotificationCreated(UUID jobId, String jobNumber, UUID staffId, UUID notificationId,
                                String type, String title, String message) implements JobLifecycleEvent {
+        // jobNumber may be null for platform-admin originated events (no job context).
     }
+
+    // ----- Platform Admin (§23 Phase 13b) ------------------------------------
+    // These don't carry a job — jobId/jobNumber are filled with sentinels so the
+    // sealed interface contract still holds.
+
+    /**
+     * A Studio ADMIN changed a tenant's status (SUSPENDED, ACTIVE, DELETED).
+     * Broadcast to TEAM_LEAD + ADMIN so peers know during a shared shift.
+     */
+    record PlatformTenantStatusChanged(UUID jobId, String jobNumber, UUID tenantId, String newStatus,
+                                       UUID actorStaffId, java.time.OffsetDateTime at)
+            implements JobLifecycleEvent {
+
+        public static PlatformTenantStatusChanged of(UUID tenantId, String newStatus, UUID actor) {
+            return new PlatformTenantStatusChanged(NIL, "", tenantId, newStatus, actor,
+                    java.time.OffsetDateTime.now());
+        }
+    }
+
+    /**
+     * A Studio ADMIN deactivated (or soft-deleted) a tenant user — refresh
+     * tokens revoked, in-flight sessions get bounced on next request.
+     */
+    record PlatformUserDeactivated(UUID jobId, String jobNumber, UUID userId, UUID tenantId,
+                                   UUID actorStaffId, java.time.OffsetDateTime at)
+            implements JobLifecycleEvent {
+
+        public static PlatformUserDeactivated of(UUID userId, UUID tenantId, UUID actor) {
+            return new PlatformUserDeactivated(NIL, "", userId, tenantId, actor,
+                    java.time.OffsetDateTime.now());
+        }
+    }
+
+    /** Sentinel UUID for platform-admin events (no job context). */
+    UUID NIL = new UUID(0L, 0L);
 }

@@ -58,6 +58,13 @@ studio:
   # /api/jobs/intake). Must match conddo-api's STUDIO_SERVICE_TOKEN. Blank = intake off.
   service:
     token: ${STUDIO_SERVICE_TOKEN:}
+  # Platform Admin (§23 Phase 13b). Studio calls conddo-api's existing public
+  # /auth/forgot-password to issue user password resets from the Studio
+  # console — avoids duplicating the token-issuing + email-templating logic.
+  # Blank → POST /admin/platform/users/{id}/reset-password returns
+  # 502 PLATFORM_API_UNAVAILABLE.
+  platform:
+    api-base-url: ${STUDIO_PLATFORM_API_BASE_URL:}
   # AI assistant (§8) — Claude (Anthropic). Blank api-key → the assistant is dormant
   # (endpoints return available:false, never an error). Model is the current Sonnet
   # (the spec's claude-sonnet-4-20250514 is deprecated); set CLAUDE_MODEL to override
