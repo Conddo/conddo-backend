@@ -45,6 +45,11 @@ conddo:
   # Base domain for subdomain→tenant resolution (businessname.conddo.io). Set
   # CONDDO_BASE_DOMAIN once the domain + wildcard DNS are pointed at the service.
   base-domain: ${CONDDO_BASE_DOMAIN:conddo.io}
+  signup:
+    # Seed a small set of sample customers / products / orders on TenantActivated
+    # for Fashion + Pharmacy tenants — keeps the dashboard from feeling empty
+    # on day one. Tests override this to false.
+    seed-sample-data: ${CONDDO_SIGNUP_SEED_SAMPLE_DATA:true}
 
   # Media storage via Cloudinary (§11.12). Upload returns a permanent, public,
   # CDN-backed secure_url (embedded in the dashboard, public website + emails).
