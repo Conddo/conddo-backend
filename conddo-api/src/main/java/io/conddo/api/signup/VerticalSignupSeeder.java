@@ -87,6 +87,10 @@ public class VerticalSignupSeeder {
                 case "pharmacy":
                     seedPharmacy();
                     break;
+                case "music-studio":
+                case "music_studio":
+                    seedMusicStudio();
+                    break;
                 default:
                     // Other verticals don't get sample data yet — they land on the
                     // designed empty states. Extend this switch when polishing
@@ -162,5 +166,50 @@ public class VerticalSignupSeeder {
                 "Repeat prescription — verified with patient on phone.");
 
         log.info("Seeded pharmacy sample data for tenant");
+    }
+
+    // ----- Music Studio (recording-studio default) --------------------------
+
+    private void seedMusicStudio() {
+        // Three sample clients — artists, producers, and a podcaster cover the
+        // common booking types for a Lagos / Abuja recording studio.
+        Customer wizzy = customerService.create("Wizzy Beats", "wizzy.beats@example.ng",
+                "+2348034567801",
+                "Afrobeats producer — recurring 4-hour sessions every Saturday.");
+        Customer ayoade = customerService.create("Ayoade T.", "ayoade.t@example.ng",
+                "+2348034567802",
+                "Independent artist — recording his debut EP. Prefers Studio A (acoustic booth).");
+        customerService.create("Lagos Voices Podcast", "lagosvoices@example.ng",
+                "+2348034567803",
+                "Weekly podcast — 2-hour podcast slot every Tuesday evening.");
+
+        // Three studio rooms / booths as inventory items so the dashboard's
+        // resource view + rate card both populate. Rate is per hour (kobo equivalent).
+        inventoryService.create("Studio A — Live Room (SSL + Neumann)", "ROOM-A", null,
+                new BigDecimal("25000"), 1, 0, true);
+        inventoryService.create("Studio B — Vocal Booth", "ROOM-B", null,
+                new BigDecimal("15000"), 1, 0, true);
+        inventoryService.create("Podcast Booth — 2 mic setup", "ROOM-P", null,
+                new BigDecimal("10000"), 1, 0, true);
+
+        // Two booked sessions in different pipeline stages — shows the Kanban
+        // board the moment a new studio signs up.
+        orderService.create(wizzy.getId(), wizzy.getFullName(),
+                "Saturday session — Studio A (4 hours)",
+                "Deposit Paid", new BigDecimal("100000"), LocalDate.now().plusDays(3),
+                List.of(new OrderService.NewItem("Studio A booking (4 hrs @ ₦25,000/hr)", 4,
+                        new BigDecimal("25000"))),
+                java.util.Map.of(),
+                "Deposit of ₦50,000 paid. Balance due on session day. Engineer: Tunde.");
+
+        orderService.create(ayoade.getId(), ayoade.getFullName(),
+                "EP session 3 — vocal tracking",
+                "In Session", new BigDecimal("45000"), LocalDate.now(),
+                List.of(new OrderService.NewItem("Studio B vocal booth (3 hrs @ ₦15,000/hr)", 3,
+                        new BigDecimal("15000"))),
+                java.util.Map.of(),
+                "Third session of a 6-session EP project. Project notes in his client file.");
+
+        log.info("Seeded music-studio sample data for tenant");
     }
 }

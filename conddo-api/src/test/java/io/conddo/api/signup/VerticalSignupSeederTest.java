@@ -94,6 +94,31 @@ class VerticalSignupSeederTest {
     }
 
     @Test
+    void musicStudioSeedsThreeClientsThreeRoomsAndTwoSessions() {
+        UUID tenantId = UUID.randomUUID();
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant("music-studio")));
+        seeder(true).onTenantActivated_seedSampleData(new TenantActivatedEvent(tenantId));
+
+        verify(customerService, times(3)).create(anyString(), anyString(), anyString(), anyString());
+        // Three "rooms" — Studio A, Studio B, Podcast booth — each as an inventory item.
+        verify(inventoryService, times(3)).create(anyString(), anyString(), any(),
+                any(BigDecimal.class), anyInt(), anyInt(), eq(true));
+        // Two sessions in different stages (Deposit Paid + In Session).
+        verify(orderService, times(2)).create(any(), anyString(), anyString(), anyString(),
+                any(), any(), any(), any(), anyString());
+    }
+
+    @Test
+    void musicStudioUnderscoreVerticalAlsoSeeds() {
+        // The vertical id stored on tenants is `music-studio` (kebab-case), but the
+        // legacy `music_studio` (snake-case) form lives in some configs. Both fire.
+        UUID tenantId = UUID.randomUUID();
+        when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant("music_studio")));
+        seeder(true).onTenantActivated_seedSampleData(new TenantActivatedEvent(tenantId));
+        verify(customerService, times(3)).create(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
     void verticalIsCaseInsensitive() {
         UUID tenantId = UUID.randomUUID();
         when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant("PHARMACY")));

@@ -35,8 +35,13 @@ public class VerticalToolMatrix {
                                 "prescriptions", "payments", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms"),
                         List.of("marketing.ads", "analytics.pharmacy"))),
+                // Fashion — orders is the headline (made-to-measure jobs), but the
+                // vertical-specific deep-dive screens are Fittings (specialized
+                // bookings) and Fabric (specialized inventory). Both ship in the
+                // starter tier so every fashion tenant sees them on day one.
                 Map.entry("fashion", tiers(
-                        List.of("website", "crm", "orders.fashion", "payments", "analytics"),
+                        List.of("website", "crm", "orders.fashion", "fittings.fashion",
+                                "fabric.fashion", "payments", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "marketing.leads"),
                         List.of("marketing.ads"))),
                 Map.entry("logistics", tiers(
@@ -59,6 +64,13 @@ public class VerticalToolMatrix {
                         List.of("website", "crm", "bookings", "payments", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "loyalty"),
                         List.of("marketing.ads"))),
+                // Music studio — covers recording studios (Type A) and music schools (Type B).
+                // Bookings is the headline module (rooms/booths/lesson slots), payments
+                // handles deposit-at-booking — the killer feature for stopping ghost bookings.
+                Map.entry("music-studio", tiers(
+                        List.of("website", "crm", "bookings", "payments", "inventory", "analytics"),
+                        List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "projects"),
+                        List.of("marketing.ads", "music-school"))),
                 // Fallback for unknown/"general" verticals: a generic orders-centric business.
                 Map.entry(DEFAULT_VERTICAL, tiers(
                         List.of("website", "crm", "orders", "bookings", "inventory", "payments", "analytics"),

@@ -36,6 +36,16 @@ class WebsiteTypeResolverTest {
     }
 
     @Test
+    void musicStudioGetsBookingFocused() {
+        // The "killer feature" for studios is online booking with deposit collection,
+        // so the website type must route to a booking-centric template regardless of plan.
+        WebsiteTypeRecommendation rec = resolver.resolve("music-studio", "starter");
+        assertEquals(WebsiteType.BOOKING_FOCUSED, rec.type());
+        assertTrue(rec.sections().contains("book"),
+                "music studio template needs a booking widget section");
+    }
+
+    @Test
     void starterFashionGetsLandingPage() {
         WebsiteTypeRecommendation rec = resolver.resolve("fashion", "starter");
         assertEquals(WebsiteType.LANDING_PAGE, rec.type());
