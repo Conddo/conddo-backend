@@ -36,6 +36,12 @@ services:
       - key: CONDDO_JWT_ISSUER
         value: https://api.conddo.io
       # --- Frontend integration ---
+      # Public base URL of conddo-app — used to build reset-password / verify
+      # links in outbound emails (NotificationService::sendPasswordReset etc).
+      # TEMPORARY: pointed at the Vercel preview URL until app.conddo.io is
+      # provisioned; switch to https://app.conddo.io then.
+      - key: CONDDO_APP_BASE_URL
+        value: https://conddo-io.vercel.app
       # Comma-separated browser origins, e.g. https://app.conddo.io
       - key: CONDDO_CORS_ALLOWED_ORIGINS
         sync: false
