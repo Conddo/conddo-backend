@@ -25,7 +25,23 @@ public interface PaymentsGateway {
     Optional<TenantPaymentsAccount> provisionTenantAccount(UUID tenantId, String tenantSlug,
                                                            String businessName, String contactEmail);
 
+    /**
+     * Initialise a payment intent against a tenant's sub-account, attached to a
+     * specific booking (MS-2 deposit-at-booking). Returns the checkout URL the
+     * FE redirects the customer to. Empty when the payments service is
+     * unreachable — the booking stays {@code PENDING_DEPOSIT} so a retry can
+     * generate a fresh URL.
+     */
+    Optional<PaymentInitResult> initBookingDeposit(UUID tenantId, String tenantSlug,
+                                                   UUID bookingId, UUID customerId,
+                                                   String customerEmail, String customerName,
+                                                   long amountKobo, String description, String returnUrl);
+
     /** Minimal handle to a provisioned tenant account, returned across the seam. */
     record TenantPaymentsAccount(UUID tenantId, String subaccountId, String status) {
+    }
+
+    /** The checkout URL + the reference the FE polls to verify the payment after the customer returns. */
+    record PaymentInitResult(String reference, String paymentUrl, String status) {
     }
 }

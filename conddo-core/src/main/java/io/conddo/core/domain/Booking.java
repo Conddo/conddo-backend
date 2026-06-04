@@ -53,6 +53,22 @@ public class Booking {
     @Column(nullable = false)
     private BigDecimal amount = BigDecimal.ZERO;
 
+    /** Soft reference to a bookable resource — typically a studio room/booth row in inventory_products. */
+    @Column(name = "resource_id")
+    private UUID resourceId;
+
+    /** RECORDING / MIXING / MASTERING / PODCAST / REHEARSAL / LESSON / OTHER. Free text so new types don't need a migration. */
+    @Column(name = "session_type")
+    private String sessionType;
+
+    /** Deposit ask in kobo (₦ × 100). Null when no deposit is required. */
+    @Column(name = "deposit_amount_kobo")
+    private Long depositAmountKobo;
+
+    /** NONE / PENDING_DEPOSIT / DEPOSIT_PAID / REFUNDED. NONE = legacy / no deposit flow. */
+    @Column(name = "deposit_status", nullable = false)
+    private String depositStatus = "NONE";
+
     private String notes;
 
     @CreationTimestamp
@@ -80,6 +96,51 @@ public class Booking {
         if (status != null && !status.isBlank()) {
             this.status = status;
         }
+    }
+
+    public UUID getResourceId() {
+        return resourceId;
+    }
+
+    public String getSessionType() {
+        return sessionType;
+    }
+
+    public Long getDepositAmountKobo() {
+        return depositAmountKobo;
+    }
+
+    public String getDepositStatus() {
+        return depositStatus;
+    }
+
+    public void setResourceId(UUID resourceId) {
+        this.resourceId = resourceId;
+    }
+
+    public void setSessionType(String sessionType) {
+        this.sessionType = sessionType;
+    }
+
+    /** Set the deposit ask up front; status starts at {@code PENDING_DEPOSIT}. */
+    public void requestDeposit(long depositAmountKobo) {
+        if (depositAmountKobo <= 0) {
+            throw new IllegalArgumentException("deposit amount must be positive");
+        }
+        this.depositAmountKobo = depositAmountKobo;
+        this.depositStatus = "PENDING_DEPOSIT";
+    }
+
+    /** Webhook landed → confirm the room is locked in. Idempotent on the {@code DEPOSIT_PAID} → {@code DEPOSIT_PAID} transition. */
+    public void markDepositPaid() {
+        this.depositStatus = "DEPOSIT_PAID";
+        if ("pending".equals(this.status)) {
+            this.status = "confirmed";
+        }
+    }
+
+    public void markDepositRefunded() {
+        this.depositStatus = "REFUNDED";
     }
 
     public UUID getId() {

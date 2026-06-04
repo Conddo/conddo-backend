@@ -55,6 +55,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/tenants").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
+                        // Service-to-service callback from conddo-payments. The controller
+                        // verifies X-Payments-Service-Token itself; no JWT is forwarded.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/internal/payments/notify").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

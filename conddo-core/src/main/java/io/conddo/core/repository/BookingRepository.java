@@ -28,4 +28,18 @@ public interface BookingRepository extends JpaRepository<Booking, UUID>, JpaSpec
             + "where b.startsAt >= :from and b.startsAt < :to and b.status <> :excludeStatus")
     BigDecimal sumAmountBetween(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to,
                                 @Param("excludeStatus") String excludeStatus);
+
+    /**
+     * Conflicts on a resource over a window. Half-open interval: two bookings
+     * conflict when {@code A.starts < B.ends AND A.ends > B.starts}. {@code cancelled}
+     * bookings don't count. Returns the list so the caller can include the
+     * conflicting reference in the error message.
+     */
+    @Query("select b from Booking b "
+            + "where b.resourceId = :resourceId "
+            + "and b.status <> 'cancelled' "
+            + "and b.startsAt < :endsAt and b.endsAt > :startsAt")
+    List<Booking> findResourceConflicts(@Param("resourceId") UUID resourceId,
+                                        @Param("startsAt") OffsetDateTime startsAt,
+                                        @Param("endsAt") OffsetDateTime endsAt);
 }

@@ -3,6 +3,8 @@ package io.conddo.api.web;
 import io.conddo.api.web.dto.AvailabilityRequest;
 import io.conddo.api.web.dto.BookingEvent;
 import io.conddo.api.web.dto.CreateBookingRequest;
+import io.conddo.api.web.dto.InitBookingWithDepositRequest;
+import io.conddo.api.web.dto.InitBookingWithDepositResponse;
 import io.conddo.api.web.dto.LinkResponse;
 import io.conddo.api.web.dto.UpdateBookingRequest;
 import io.conddo.core.common.ApiResponse;
@@ -62,6 +64,28 @@ public class BookingController {
         BookingEvent body = BookingEvent.from(bookingService.create(
                 request.customerId(), request.customerName(), request.service(),
                 request.start(), request.end(), request.mode(), request.amount(), request.notes(), "confirmed"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
+    }
+
+    /**
+     * MS-2 deposit-at-booking — reserve a studio room + ask conddo-payments
+     * for a checkout URL the customer pays before the slot is locked in.
+     *
+     * <p>The booking is created in {@code pending} / {@code PENDING_DEPOSIT};
+     * a webhook-triggered notify-back from payments flips it to {@code
+     * confirmed} / {@code DEPOSIT_PAID}. If the customer never pays, the slot
+     * remains pending and can be cleared by a future scheduled sweeper.
+     */
+    @PostMapping("/init-with-deposit")
+    @PreAuthorize(WRITE)
+    public ResponseEntity<ApiResponse<InitBookingWithDepositResponse>> initWithDeposit(
+            @Valid @RequestBody InitBookingWithDepositRequest request) {
+        InitBookingWithDepositResponse body = InitBookingWithDepositResponse.from(
+                bookingService.initWithDeposit(
+                        request.customerId(), request.customerName(), request.customerEmail(),
+                        request.service(), request.resourceId(), request.sessionType(),
+                        request.start(), request.end(), request.amount(),
+                        request.depositAmountKobo(), request.returnUrl(), request.notes()));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
     }
 
