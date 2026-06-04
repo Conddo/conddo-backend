@@ -1,6 +1,7 @@
 package io.conddo.studio.jobs;
 
 import io.conddo.studio.ai.AiAssistantService;
+import io.conddo.studio.builder.SiteService;
 import io.conddo.studio.common.ConflictException;
 import io.conddo.studio.common.NotFoundException;
 import io.conddo.studio.config.StudioProperties;
@@ -59,13 +60,15 @@ public class JobService {
     private final StudioProperties properties;
     private final AiAssistantService aiAssistant;
     private final ApplicationEventPublisher events;
+    private final org.springframework.beans.factory.ObjectProvider<SiteService> siteServiceProvider;
     private final Clock clock = Clock.systemUTC();
 
     public JobService(JobRepository jobRepository, JobTypeRepository jobTypeRepository,
                       JobActivityRepository activityRepository, QaReviewRepository qaReviewRepository,
                       StaffRepository staffRepository, StaffNotificationRepository notifications,
                       JdbcTemplate jdbcTemplate, StudioProperties properties,
-                      AiAssistantService aiAssistant, ApplicationEventPublisher events) {
+                      AiAssistantService aiAssistant, ApplicationEventPublisher events,
+                      org.springframework.beans.factory.ObjectProvider<SiteService> siteServiceProvider) {
         this.jobRepository = jobRepository;
         this.jobTypeRepository = jobTypeRepository;
         this.activityRepository = activityRepository;
@@ -76,6 +79,7 @@ public class JobService {
         this.properties = properties;
         this.aiAssistant = aiAssistant;
         this.events = events;
+        this.siteServiceProvider = siteServiceProvider;
     }
 
     // ----- creation (admin / future auto-create on signup) --------------------
@@ -159,6 +163,13 @@ public class JobService {
         job.submit(OffsetDateTime.now(clock), studioUrl);
         log(jobId, staffId, "JOB_SUBMITTED", notes);
         Job saved = jobRepository.save(job);
+        // Auto-publish the builder Site if one exists for this job (§21.2). The
+        // ObjectProvider keeps the Builder package optional from JobService's POV
+        // and breaks the circular dep (SiteService depends on JobRepository).
+        SiteService siteService = siteServiceProvider.getIfAvailable();
+        if (siteService != null) {
+            siteService.autoPublishIfPresent(jobId);
+        }
         events.publishEvent(new JobLifecycleEvent.JobSubmitted(saved.getId(), saved.getJobNumber(),
                 saved.getJobTypeId(), staffId));
         return saved;

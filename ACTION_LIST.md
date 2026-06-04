@@ -493,6 +493,253 @@ a valid session — never touching a password.
 ### 7. Billing (PRD §14)
 - Paystack subscriptions; tiers; 14-day trial; failed-payment grace period.
 
+### 7a. Payments service — `conddo-payments` (separate Spring service)  ⬜ TODO (P0 for V1 launch)
+
+**Architecture decision (2026-06-04):** Payments is its own deployable service
+— **not** bolted into `conddo-api`. Same shape as `conddo-studio`:
+
+- Separate Spring Boot module (`conddo-payments`), separate Render service,
+  separate Postgres schema (`payments.*` — owned by `conddo_owner` role).
+- Communicates with `conddo-api` over HTTP with a shared service token
+  (`X-Payments-Service-Token`), mirroring the `conddo-api ↔ conddo-studio`
+  seam already in place for the website-build hand-off.
+- Talks to RoutePay externally; everything Conddo-side is one service that
+  can scale, deploy, and fail independently of the platform API.
+
+#### Why a separate service
+
+- **Different uptime profile.** A platform API outage shouldn't kill in-flight
+  card transactions; a payments outage shouldn't kill signups.
+- **Regulatory blast radius.** CBN PSSP / PCI considerations (even when hosted
+  checkout means we're not direct PCI scope) are easier to isolate when the
+  module is its own deployable.
+- **Provider portability.** Swap RoutePay for Flutterwave / Paystack /
+  Monnify later without touching `conddo-api`.
+- **Webhook surface area.** RoutePay's webhook posts directly to the
+  payments service URL — no funnel through `conddo-api`.
+
+#### Architecture: platform-merchant for V1 (Pattern B)
+
+Two patterns:
+
+| Pattern | Tenant gets paid by | Conddo holds | Risk |
+|---|---|---|---|
+| **A — Tenant-merchant** | Customer pays directly into tenant's bank | nothing — passes through | Each tenant signs up for their own RoutePay account; we hold their client_id/secret encrypted |
+| **B — Platform-merchant (V1)** | Customer pays Conddo; Conddo settles to tenant weekly/monthly | Float of unsettled funds | Conddo takes on PSSP-adjacent ops; simpler integration; needs settlement engine |
+
+**V1 decision: Pattern B.** Faster to ship, single RoutePay credential set,
+matches what most Nigerian SME platforms do (Bumpa, Selar). Settlement is
+manual ops for the first 100 tenants; automation lands in V1.5.
+
+Revisit Pattern A when: a Pro tier wants direct-settlement, or regulation
+requires no float.
+
+#### Service layout
+
+```
+backend/                          (this repo)
+  conddo-payments/                NEW
+    pom.xml
+    src/main/java/io/conddo/payments/
+      ConddoPaymentsApplication.java         @SpringBootApplication, @EnableAsync
+      auth/
+        PaymentsServiceTokenFilter.java      verifies X-Payments-Service-Token
+                                              on inbound from conddo-api
+        PaymentsJwtService.java              (optional) for verifying tenant
+                                              JWTs forwarded by conddo-api
+      domain/
+        Payment.java
+        PaymentStatus.java                   PENDING / PAID / FAILED / REFUNDED / EXPIRED
+      repository/
+        PaymentRepository.java
+      routepay/
+        RoutePayTokenProvider.java           OAuth2 client_credentials, cached
+        RoutePayClient.java                  RestClient wrapper (SetRequest, GetTransaction)
+        RoutePayWebhookVerifier.java         HMAC verification
+      service/
+        PaymentService.java                  init / verify / handleWebhook
+        SettlementLedgerService.java         (V1.5 — placeholder)
+      web/
+        PaymentsController.java              /api/payments/**
+        WebhookController.java               /api/payments/webhook  (no auth, signature-verified)
+        dto/
+          InitPaymentRequest.java
+          PaymentResponse.java
+          VerifyResponse.java
+    src/main/resources/
+      application.yml
+      db/migration/
+        V1__payments_schema.sql              CREATE SCHEMA payments + table below
+```
+
+#### Schema (V1__payments_schema.sql)
+
+```sql
+CREATE SCHEMA IF NOT EXISTS payments;
+
+CREATE TABLE payments.payments (
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- references the platform's IDs by value; no FK across services
+    tenant_id                UUID NOT NULL,
+    tenant_slug              TEXT NOT NULL,        -- denormalised for return URLs
+    order_id                 UUID,                  -- mutually exclusive with booking_id
+    booking_id               UUID,
+    customer_id              UUID,                  -- platform's customer id, denormalised
+    customer_email           TEXT NOT NULL,
+    customer_name            TEXT NOT NULL,
+    description              TEXT,
+
+    -- RoutePay
+    routepay_reference       TEXT NOT NULL UNIQUE,  -- our internal ref sent to RoutePay
+    routepay_transaction_ref TEXT UNIQUE,           -- their ref after init succeeds
+    payment_url              TEXT,                  -- hosted checkout URL
+    status                   TEXT NOT NULL DEFAULT 'PENDING'
+                                CHECK (status IN ('PENDING','PAID','FAILED','REFUNDED','EXPIRED')),
+
+    -- money
+    amount_kobo              BIGINT NOT NULL CHECK (amount_kobo > 0),
+    currency                 TEXT NOT NULL DEFAULT 'NGN',
+    fee_kobo                 BIGINT,
+    paid_at                  TIMESTAMPTZ,
+    failure_reason           TEXT,
+
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    raw_webhook_payload      JSONB,                 -- last verified webhook body (forensics)
+
+    CONSTRAINT one_of_order_or_booking
+        CHECK ((order_id IS NULL) <> (booking_id IS NULL))
+);
+CREATE INDEX idx_payments_tenant_status ON payments.payments(tenant_id, status);
+CREATE INDEX idx_payments_customer ON payments.payments(customer_id);
+CREATE INDEX idx_payments_routepay_txn ON payments.payments(routepay_transaction_ref)
+    WHERE routepay_transaction_ref IS NOT NULL;
+```
+
+No RLS on `payments.payments` — the service runs as the platform-merchant
+and gates access by tenant_id in code. Tenant-scoped reads happen via the
+`conddo-api ↔ conddo-payments` service-to-service contract below.
+
+#### conddo-api → conddo-payments calls (service-to-service)
+
+```
+POST /api/payments/init
+  Auth: X-Payments-Service-Token (shared secret) + Conddo-Tenant-Id header
+  Body: { orderId?, bookingId?, amount?: number_in_kobo,
+          customerEmail, customerName, description?, returnUrl? }
+  Behaviour:
+    1. Validate exactly one of orderId / bookingId.
+    2. Generate routepay_reference: RP-<tenantSlug>-<short uuid>.
+    3. Get cached RoutePay access token (50-min cache).
+    4. POST RoutePay /payment/api/v1/Payment/SetRequest with reference, amount,
+       customer details, returnUrl.
+    5. Persist payments row.
+    6. Return { paymentUrl, reference }.
+  Responses:
+    200 { paymentUrl, reference, status: "PENDING" }
+    422 INVALID_AMOUNT / DUPLICATE_REFERENCE
+    502 ROUTEPAY_UNAVAILABLE
+    503 ROUTEPAY_AUTH_FAILED
+
+GET /api/payments/{reference}/verify
+  Auth: X-Payments-Service-Token + Conddo-Tenant-Id
+  Behaviour:
+    1. Look up payment row.
+    2. If terminal → return cached status.
+    3. Else → call RoutePay GetTransaction → update row → return current.
+  Responses: 200 { status, amount, paidAt?, failureReason? } / 404
+
+GET /api/payments?tenantId=...
+  Auth: X-Payments-Service-Token + Conddo-Tenant-Id
+  Returns the tenant's payment list — drives the dashboard's read-side.
+  Conddo-api proxies this to its /api/v1/payments/transactions endpoint.
+```
+
+#### RoutePay → conddo-payments webhook (no service-token; signature-verified)
+
+```
+POST /api/payments/webhook
+  Headers: X-RoutePay-Signature
+  Body: RoutePay's webhook payload
+  Behaviour:
+    1. Verify signature against ROUTEPAY_WEBHOOK_SECRET (HMAC-SHA256).
+    2. Idempotent: skip if payment already terminal.
+    3. Update payments + persist raw_webhook_payload.
+    4. POST a tenant-scoped notification to conddo-api at
+       /api/v1/internal/payments/notify (new tiny endpoint, same
+       X-Payments-Service-Token in reverse) so the order/booking gets
+       updated, an in-app notification fires, and the tenant ledger ticks.
+    5. Return 200 always (so RoutePay doesn't retry on transient errors).
+```
+
+#### Frontend never calls conddo-payments directly
+
+The Conddo-app frontend talks to `conddo-api` only. `conddo-api` is the
+proxy/gateway in front of `conddo-payments`. The FE sees:
+
+```
+POST /api/v1/payments/init        →  conddo-api proxies to conddo-payments
+GET  /api/v1/payments/{ref}/verify→  conddo-api proxies to conddo-payments
+```
+
+Same response shapes as the §7a contract above. The FE has zero awareness
+of the second service. This also means the FE can ship immediately against
+the spec — when the payments service is wired into conddo-api as a gateway,
+the FE buttons just start working.
+
+#### Environment variables
+
+**On `conddo-payments` (the new service):**
+```
+PAYMENTS_DB_URL
+PAYMENTS_DB_USER          (conddo_owner — same Postgres, payments schema)
+PAYMENTS_DB_PASSWORD
+PAYMENTS_SERVICE_TOKEN    (same value as on conddo-api)
+
+ROUTEPAY_BASE_URL=https://payment.routepay.com
+ROUTEPAY_AUTH_BASE_URL=https://auth.routepay.com
+ROUTEPAY_CLIENT_ID
+ROUTEPAY_CLIENT_SECRET
+ROUTEPAY_WEBHOOK_SECRET
+
+CONDDO_API_BASE_URL=https://conddo-backend.onrender.com  # for the internal notify callback
+```
+
+**On `conddo-api`:**
+```
+PAYMENTS_BASE_URL=https://conddo-payments.onrender.com
+PAYMENTS_SERVICE_TOKEN     (matches the payments service)
+```
+
+Test env: `https://auth-test.routepay.com` + `https://payment-test.routepay.com`.
+
+#### Definition of done
+
+A customer on `amaka-styles.conddo.io/book` picks a fitting slot →
+FE calls `POST /api/v1/payments/init` on `conddo-api` → conddo-api proxies
+to `conddo-payments` → routepay/SetRequest → 200 with paymentUrl →
+customer pays via RoutePay hosted checkout → RoutePay webhook hits
+`conddo-payments/api/payments/webhook` → conddo-payments updates its row +
+notifies `conddo-api` → order/booking flipped to PAID + notification fires
+to Amaka. Customer returns to `amaka-styles.conddo.io/payments/return?ref=...`
+→ FE polls `/api/v1/payments/{ref}/verify` (proxied) → renders success.
+
+#### Phasing for the weekend
+
+Given timeline:
+
+- **Phase A — Service scaffold (BE team)**: `conddo-payments` module, V1
+  migration, controllers, RoutePay client (no auth caching yet — just call
+  per request), webhook with signature verification, `conddo-api` proxy.
+  ~12-16 hours of focused backend work.
+- **Phase B — FE (this slice)**: ships the contract against `/api/v1/payments/*`
+  on conddo-api. Pay buttons on order detail + public booking page + return
+  URL handler. Renders a clean "Payments not configured" empty state until
+  the proxy stops 404'ing. ~3-4 hours.
+
+The FE can deploy without the BE — buttons fail gracefully. The BE can ship
+in parallel.
+
 ---
 
 > **Items 8–9 below are LATER PHASES — newly specified in PRD v1.3. Do not build

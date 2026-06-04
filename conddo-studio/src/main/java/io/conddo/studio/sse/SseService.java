@@ -193,6 +193,20 @@ public class SseService {
         broadcastToRole("ADMIN", "platform.user_deactivated", event);
     }
 
+    // ----- Builder (§21.5) ----------------------------------------------------
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onSiteSectionUpdated(JobLifecycleEvent.SiteSectionUpdated event) {
+        broadcastToRole("TEAM_LEAD", "site.section_updated", event);
+        broadcastToRole("ADMIN", "site.section_updated", event);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onSitePublished(JobLifecycleEvent.SitePublished event) {
+        broadcastToRole("TEAM_LEAD", "site.published", event);
+        broadcastToRole("ADMIN", "site.published", event);
+    }
+
     // ----- heartbeat ---------------------------------------------------------
 
     /** Keeps idle connections alive through reverse proxies and load balancers. */
