@@ -35,8 +35,13 @@ public class VerticalToolMatrix {
                                 "prescriptions", "payments", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms"),
                         List.of("marketing.ads", "analytics.pharmacy"))),
+                // Fashion — orders is the headline (made-to-measure jobs), but the
+                // vertical-specific deep-dive screens are Fittings (specialized
+                // bookings) and Fabric (specialized inventory). Both ship in the
+                // starter tier so every fashion tenant sees them on day one.
                 Map.entry("fashion", tiers(
-                        List.of("website", "crm", "orders.fashion", "payments", "analytics"),
+                        List.of("website", "crm", "orders.fashion", "fittings.fashion",
+                                "fabric.fashion", "payments", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "marketing.leads"),
                         List.of("marketing.ads"))),
                 Map.entry("logistics", tiers(

@@ -37,9 +37,14 @@ public class ManifestCatalogue {
         section("prescriptions", "Prescriptions", "pill", "/prescriptions", 45, "prescriptions");
         section("orders", "Orders", "clipboard-list", "/orders", 40,
                 "orders", "orders.fashion", "orders.logistics");
+        // Fashion deep-dive: Fabric is the specialized inventory view (rolls of
+        // cloth with colour + supplier + yards remaining), Fittings is the
+        // specialized booking view (fitting appointments tied to a garment job).
+        section("fabric", "Fabric", "layers", "/fabric", 46, "fabric.fashion");
         section("tables", "Tables", "utensils", "/tables", 48, "table-mgmt");
         section("inventory", "Inventory", "package", "/inventory", 50,
                 "inventory", "inventory.pharmacy", "inventory.retail");
+        section("fittings", "Fittings", "scissors", "/fittings", 58, "fittings.fashion");
         section("store", "Store", "shopping-cart", "/store", 52, "ecommerce");
         section("pos", "POS", "scan-line", "/pos", 55, "pos", "pos.pharmacy");
         section("bookings", "Bookings", "calendar", "/bookings", 60, "bookings");
