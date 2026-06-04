@@ -1,13 +1,25 @@
 package io.conddo.studio.platform;
 
+import io.conddo.studio.auth.StudioPrincipal;
 import io.conddo.studio.common.ApiResponse;
 import io.conddo.studio.web.dto.PlatformTenantDto;
 import io.conddo.studio.web.dto.PlatformUserDto;
+import io.conddo.studio.web.dto.UpdatePlatformTenantRequest;
+import io.conddo.studio.web.dto.UpdatePlatformUserRequest;
+import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,9 +46,12 @@ public class PlatformAdminController {
     private static final int MAX_SIZE = 100;
 
     private final PlatformAdminService service;
+    private final PlatformAdminMutationService mutations;
 
-    public PlatformAdminController(PlatformAdminService service) {
+    public PlatformAdminController(PlatformAdminService service,
+                                   PlatformAdminMutationService mutations) {
         this.service = service;
+        this.mutations = mutations;
     }
 
     // ----- tenants ------------------------------------------------------------
@@ -84,5 +99,66 @@ public class PlatformAdminController {
     @GetMapping("/users/{userId}")
     public ApiResponse<PlatformUserDto> getUser(@PathVariable UUID userId) {
         return ApiResponse.ok(PlatformUserDto.detail(service.getUser(userId)));
+    }
+
+    // ----- mutations (§23 Phase 13b) -----------------------------------------
+
+    /**
+     * Update tenant fields. {@code status} accepts {@code ACTIVE} or
+     * {@code SUSPENDED}; setting to {@code SUSPENDED} revokes every
+     * refresh-token family on that tenant. To soft-delete use the DELETE.
+     */
+    @PatchMapping("/tenants/{tenantId}")
+    public ApiResponse<PlatformTenantDto> patchTenant(@PathVariable UUID tenantId,
+                                                      @Valid @RequestBody UpdatePlatformTenantRequest body,
+                                                      @AuthenticationPrincipal Jwt jwt) {
+        return ApiResponse.ok(PlatformTenantDto.summary(
+                mutations.patchTenant(StudioPrincipal.staffId(jwt),
+                        tenantId, body.name(), body.planId(), body.status())));
+    }
+
+    /** Soft-delete the tenant — flips status to {@code DELETED}, revokes sessions. */
+    @DeleteMapping("/tenants/{tenantId}")
+    public ResponseEntity<Void> deleteTenant(@PathVariable UUID tenantId,
+                                             @AuthenticationPrincipal Jwt jwt) {
+        mutations.softDeleteTenant(StudioPrincipal.staffId(jwt), tenantId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Update user role / active flag / display name. Refuses to demote or
+     * deactivate the last active TENANT_ADMIN of a tenant
+     * ({@code 422 LAST_ADMIN_PROTECTED}); deactivating or role-changing
+     * revokes the user's refresh-token family.
+     */
+    @PatchMapping("/users/{userId}")
+    public ApiResponse<PlatformUserDto> patchUser(@PathVariable UUID userId,
+                                                  @Valid @RequestBody UpdatePlatformUserRequest body,
+                                                  @AuthenticationPrincipal Jwt jwt) {
+        return ApiResponse.ok(PlatformUserDto.summary(
+                mutations.patchUser(StudioPrincipal.staffId(jwt),
+                        userId, body.role(), body.active(), body.fullName())));
+    }
+
+    /** Triggers the standard password-reset email via the platform's /auth/forgot-password. */
+    @PostMapping("/users/{userId}/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetUserPassword(@PathVariable UUID userId,
+                                                               @AuthenticationPrincipal Jwt jwt) {
+        boolean accepted = mutations.requestPasswordReset(StudioPrincipal.staffId(jwt), userId);
+        if (!accepted) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(ApiResponse.fail(io.conddo.studio.common.ApiError.of(
+                            "PLATFORM_API_UNAVAILABLE",
+                            "Studio cannot reach the platform's password-reset endpoint")));
+        }
+        return ResponseEntity.accepted().body(ApiResponse.ok(null));
+    }
+
+    /** Soft-delete a user — deactivate + revoke sessions. Subject to last-admin protection. */
+    @DeleteMapping("/users/{userId}")
+    public ResponseEntity<Void> deleteUser(@PathVariable UUID userId,
+                                           @AuthenticationPrincipal Jwt jwt) {
+        mutations.softDeleteUser(StudioPrincipal.staffId(jwt), userId);
+        return ResponseEntity.noContent().build();
     }
 }

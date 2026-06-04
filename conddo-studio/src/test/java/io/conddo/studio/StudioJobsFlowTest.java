@@ -577,6 +577,162 @@ class StudioJobsFlowTest {
         }
     }
 
+    private static void seedRefreshToken(Connection c, UUID userId, UUID tenantId, String selector) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO public.refresh_tokens (user_id, tenant_id, family_id, selector, token_hash, expires_at) "
+                        + "VALUES (?::uuid, ?::uuid, gen_random_uuid(), ?, 'hash', now() + interval '30 days')")) {
+            ps.setString(1, userId.toString());
+            ps.setString(2, tenantId.toString());
+            ps.setString(3, selector);
+            ps.executeUpdate();
+        }
+    }
+
+    private static String tokenRevokedReason(Connection c, String selector) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(
+                "SELECT revoked_reason FROM public.refresh_tokens WHERE selector = ?")) {
+            ps.setString(1, selector);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
+    @Test
+    void platformAdminPhase13bMutationsAndIntegrityGuards() throws Exception {
+        // Seed a tenant with two TENANT_ADMINs (one we'll mutate, one to satisfy
+        // last-admin protection) and a STAFF user. Plus refresh tokens for each.
+        UUID tenantId = UUID.randomUUID();
+        UUID adminAId = UUID.randomUUID();
+        UUID adminBId = UUID.randomUUID();
+        UUID staffId = UUID.randomUUID();
+        String adminASelector = "sel-admin-a-" + UUID.randomUUID();
+        String adminBSelector = "sel-admin-b-" + UUID.randomUUID();
+        String staffSelector = "sel-staff-" + UUID.randomUUID();
+
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            seedPlatformTenant(c, tenantId, "Mutate Co", "mutate-co", "fashion", "starter");
+            seedPlatformUser(c, adminAId, tenantId, "admin-a@mutate.test", "Admin A", "TENANT_ADMIN");
+            seedPlatformUser(c, adminBId, tenantId, "admin-b@mutate.test", "Admin B", "TENANT_ADMIN");
+            seedPlatformUser(c, staffId, tenantId, "staff@mutate.test", "Staff", "STAFF");
+            seedRefreshToken(c, adminAId, tenantId, adminASelector);
+            seedRefreshToken(c, adminBId, tenantId, adminBSelector);
+            seedRefreshToken(c, staffId, tenantId, staffSelector);
+        }
+
+        String adminToken = login(ADMIN);
+
+        // 1. PATCH name + planId — no side effects.
+        mockMvc.perform(patch("/api/jobs/admin/platform/tenants/" + tenantId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("name", "Mutate Co (renamed)", "planId", "business"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Mutate Co (renamed)"))
+                .andExpect(jsonPath("$.data.planId").value("business"));
+
+        // 2. PATCH a User — promote STAFF to TENANT_ADMIN (no last-admin risk, no token revoke).
+        mockMvc.perform(patch("/api/jobs/admin/platform/users/" + staffId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("role", "tenant_admin"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.role").value("TENANT_ADMIN"));
+
+        // 3. Last-admin protection: try to deactivate every TENANT_ADMIN in turn.
+        //    After step 2 the tenant has THREE TENANT_ADMINs (A, B, ex-staff).
+        //    Deactivate A → OK (B + ex-staff still active).
+        mockMvc.perform(patch("/api/jobs/admin/platform/users/" + adminAId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("active", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.active").value(false));
+        // A's refresh-token family was revoked.
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            org.junit.jupiter.api.Assertions.assertEquals(
+                    "PLATFORM_ADMIN_USER_PATCH", tokenRevokedReason(c, adminASelector));
+        }
+
+        // Now deactivate the ex-staff (TENANT_ADMIN) — B is still active.
+        mockMvc.perform(patch("/api/jobs/admin/platform/users/" + staffId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("active", false))))
+                .andExpect(status().isOk());
+
+        // Deactivate B → only TENANT_ADMIN left → 422 LAST_ADMIN_PROTECTED.
+        mockMvc.perform(patch("/api/jobs/admin/platform/users/" + adminBId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("active", false))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("LAST_ADMIN_PROTECTED"));
+
+        // Demoting B to STAFF is also blocked by the same guard.
+        mockMvc.perform(patch("/api/jobs/admin/platform/users/" + adminBId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("role", "STAFF"))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("LAST_ADMIN_PROTECTED"));
+
+        // 4. Suspend the tenant — every active refresh token on it should be revoked.
+        mockMvc.perform(patch("/api/jobs/admin/platform/tenants/" + tenantId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("status", "SUSPENDED"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUSPENDED"));
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            // B's token: created later but never revoked before — now should be PLATFORM_ADMIN_TENANT_SUSPENDED.
+            org.junit.jupiter.api.Assertions.assertEquals(
+                    "PLATFORM_ADMIN_TENANT_SUSPENDED", tokenRevokedReason(c, adminBSelector));
+        }
+
+        // 5. Soft-delete tenant — status → DELETED.
+        mockMvc.perform(delete("/api/jobs/admin/platform/tenants/" + tenantId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/jobs/admin/platform/tenants/" + tenantId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DELETED"));
+
+        // 6. Password reset — platform URL unset in tests → 502 PLATFORM_API_UNAVAILABLE.
+        mockMvc.perform(post("/api/jobs/admin/platform/users/" + adminBId + "/reset-password")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(adminToken)))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error.code").value("PLATFORM_API_UNAVAILABLE"));
+
+        // 7. Audit rows landed — at least one per mutation we drove.
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT count(*) FROM studio.platform_admin_audit_log WHERE target_id = ?::uuid")) {
+            ps.setString(1, tenantId.toString());
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(rs.getLong(1) >= 3, "tenant got patched twice + deleted = 3+ audit rows");
+            }
+        }
+
+        // 8. Developer cannot reach any mutator.
+        String devToken = login(DEV);
+        mockMvc.perform(patch("/api/jobs/admin/platform/tenants/" + tenantId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/jobs/admin/platform/users/" + adminBId + "/reset-password")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void unauthenticatedIsRejectedAndBadLoginFails() throws Exception {
         mockMvc.perform(get("/api/jobs/my-jobs"))

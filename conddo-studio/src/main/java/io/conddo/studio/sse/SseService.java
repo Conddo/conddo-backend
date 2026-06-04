@@ -179,6 +179,20 @@ public class SseService {
         send(event.staffId(), "notification.created", event);
     }
 
+    // ----- Platform Admin (§23 Phase 13b) -------------------------------------
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPlatformTenantStatusChanged(JobLifecycleEvent.PlatformTenantStatusChanged event) {
+        broadcastToRole("TEAM_LEAD", "platform.tenant_status_changed", event);
+        broadcastToRole("ADMIN", "platform.tenant_status_changed", event);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPlatformUserDeactivated(JobLifecycleEvent.PlatformUserDeactivated event) {
+        broadcastToRole("TEAM_LEAD", "platform.user_deactivated", event);
+        broadcastToRole("ADMIN", "platform.user_deactivated", event);
+    }
+
     // ----- heartbeat ---------------------------------------------------------
 
     /** Keeps idle connections alive through reverse proxies and load balancers. */
