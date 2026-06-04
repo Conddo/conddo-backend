@@ -29,7 +29,7 @@ import java.util.Set;
 public class WebsiteTypeResolver {
 
     private static final Set<String> BOOKING_VERTICALS = Set.of(
-            "beauty-and-wellness", "professional-services");
+            "beauty-and-wellness", "professional-services", "music-studio");
 
     private static final Set<String> LANDING_PAGE_STARTER_VERTICALS = Set.of(
             "general", "food-and-beverage", "fashion");

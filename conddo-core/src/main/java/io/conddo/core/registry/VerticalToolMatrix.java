@@ -59,6 +59,13 @@ public class VerticalToolMatrix {
                         List.of("website", "crm", "bookings", "payments", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "loyalty"),
                         List.of("marketing.ads"))),
+                // Music studio — covers recording studios (Type A) and music schools (Type B).
+                // Bookings is the headline module (rooms/booths/lesson slots), payments
+                // handles deposit-at-booking — the killer feature for stopping ghost bookings.
+                Map.entry("music-studio", tiers(
+                        List.of("website", "crm", "bookings", "payments", "inventory", "analytics"),
+                        List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "projects"),
+                        List.of("marketing.ads", "music-school"))),
                 // Fallback for unknown/"general" verticals: a generic orders-centric business.
                 Map.entry(DEFAULT_VERTICAL, tiers(
                         List.of("website", "crm", "orders", "bookings", "inventory", "payments", "analytics"),

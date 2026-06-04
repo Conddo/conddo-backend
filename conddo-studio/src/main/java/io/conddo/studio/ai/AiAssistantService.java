@@ -53,7 +53,12 @@ public class AiAssistantService {
             "logistics", "Tone: Efficient, direct, reliable. Speed and reliability are the selling "
                     + "points. Emphasise: on-time, tracked, dependable.",
             "professional_services", "Tone: Authoritative, credible, results-focused. The client needs "
-                    + "to trust the expertise. Emphasise: experience, results, professionalism.");
+                    + "to trust the expertise. Emphasise: experience, results, professionalism.",
+            "music_studio", "Tone: Creative, confident, professional. Artists need to feel the room "
+                    + "delivers — the gear, the engineer, the sound. Emphasise: studio gear specifics "
+                    + "(SSL/Neumann/Pro Tools when named), engineer credits, past projects mixed/mastered "
+                    + "here. Avoid generic 'state of the art' language. Mention the city (Lagos, Abuja, "
+                    + "PH) and any signature releases.");
 
     private static final String DEFAULT_TONE = "Tone: Professional and approachable.";
 

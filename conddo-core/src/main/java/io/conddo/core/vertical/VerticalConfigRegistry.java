@@ -69,6 +69,14 @@ public class VerticalConfigRegistry {
                         List.of("Booked", "Confirmed", "In Service", "Completed"),
                         List.of(),
                         List.of("hero", "about", "services", "gallery", "testimonials", "contact"))),
+                // Music studio — recording studios + music schools. Session pipeline:
+                // a session is booked, deposit collected, engineer assigned, then the
+                // session runs, post-production wraps it, and the project is delivered.
+                Map.entry("music-studio", new VerticalConfig(
+                        "music-studio", "Music Studio",
+                        List.of("Booked", "Deposit Paid", "In Session", "Post-Production", "Delivered"),
+                        List.of(),
+                        List.of("hero", "rooms", "services", "equipment", "credits", "booking", "contact"))),
                 // Fallback vertical, addressable under both ids the rest of the stack uses.
                 Map.entry("general", general),
                 Map.entry("default", general));
