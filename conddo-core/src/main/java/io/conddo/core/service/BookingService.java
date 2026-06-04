@@ -4,6 +4,7 @@ import io.conddo.core.common.NotFoundException;
 import io.conddo.core.domain.Booking;
 import io.conddo.core.domain.Customer;
 import io.conddo.core.domain.Tenant;
+import io.conddo.core.payments.PaymentsGateway;
 import io.conddo.core.repository.BookingRepository;
 import io.conddo.core.repository.CustomerRepository;
 import io.conddo.core.repository.TenantRepository;
@@ -40,14 +41,17 @@ public class BookingService {
     private final CustomerRepository customerRepository;
     private final TenantRepository tenantRepository;
     private final TenantSession tenantSession;
+    private final PaymentsGateway paymentsGateway;
     private final Clock clock;
 
     public BookingService(BookingRepository bookingRepository, CustomerRepository customerRepository,
-                          TenantRepository tenantRepository, TenantSession tenantSession, Clock clock) {
+                          TenantRepository tenantRepository, TenantSession tenantSession,
+                          PaymentsGateway paymentsGateway, Clock clock) {
         this.bookingRepository = bookingRepository;
         this.customerRepository = customerRepository;
         this.tenantRepository = tenantRepository;
         this.tenantSession = tenantSession;
+        this.paymentsGateway = paymentsGateway;
         this.clock = clock;
     }
 
@@ -119,6 +123,107 @@ public class BookingService {
     public void delete(UUID id) {
         tenantSession.bind();
         bookingRepository.delete(require(id));
+    }
+
+    // ----- deposit-at-booking (MS-2) -----------------------------------------
+
+    /**
+     * Music-studio path: create a {@code pending} booking against a resource
+     * (a studio room / booth / lesson slot) AND ask conddo-payments for a
+     * checkout URL the customer can visit to pay the deposit. The booking
+     * stays {@code pending} + {@code deposit_status = PENDING_DEPOSIT} until
+     * payments fires the notify-back callback.
+     *
+     * <p>The killer feature against ghost bookings: the slot isn't actually
+     * locked until a deposit reaches the tenant's RoutePay sub-account, so a
+     * forgotten "Contact us" inquiry can't waste an evening of studio time.
+     *
+     * <p>Resource availability is checked atomically inside the booking save
+     * (overlap query on the same transaction). Concurrent attempts on the
+     * same slot are caught by the second one's overlap check seeing the first
+     * one's row.
+     */
+    @Transactional
+    public InitWithDepositResult initWithDeposit(UUID customerId, String customerName,
+                                                 String customerEmail, String service,
+                                                 UUID resourceId, String sessionType,
+                                                 OffsetDateTime startsAt, OffsetDateTime endsAt,
+                                                 BigDecimal amount, long depositAmountKobo,
+                                                 String returnUrl, String notes) {
+        if (resourceId == null) {
+            throw new IllegalArgumentException("resourceId is required for deposit-at-booking");
+        }
+        if (startsAt == null || endsAt == null || !endsAt.isAfter(startsAt)) {
+            throw new IllegalArgumentException("startsAt must be before endsAt");
+        }
+        if (depositAmountKobo <= 0) {
+            throw new IllegalArgumentException("depositAmountKobo must be positive");
+        }
+        tenantSession.bind();
+        Tenant tenant = requireTenant();
+
+        // Conflict check — overlap on the same room.
+        List<Booking> conflicts = bookingRepository.findResourceConflicts(resourceId, startsAt, endsAt);
+        if (!conflicts.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "The room is already booked between " + startsAt + " and " + endsAt
+                            + " — overlapping booking: " + conflicts.get(0).getId());
+        }
+
+        // Resolve customer details for the payment.
+        String resolvedName = customerName;
+        String resolvedEmail = customerEmail;
+        if (customerId != null) {
+            Customer customer = customerRepository.findById(customerId)
+                    .orElseThrow(() -> new NotFoundException("Customer not found"));
+            resolvedName = customer.getFullName();
+            if (resolvedEmail == null || resolvedEmail.isBlank()) {
+                resolvedEmail = customer.getEmail();
+            }
+        }
+        if (resolvedEmail == null || resolvedEmail.isBlank()) {
+            throw new IllegalArgumentException("customerEmail is required so RoutePay can email the receipt");
+        }
+
+        Booking booking = new Booking(TenantContext.require(), customerId, resolvedName, service,
+                startsAt, endsAt, "in_person", "pending");
+        booking.setResourceId(resourceId);
+        booking.setSessionType(sessionType);
+        if (amount != null) {
+            booking.setAmount(amount);
+        }
+        booking.setNotes(notes);
+        booking.requestDeposit(depositAmountKobo);
+        booking = bookingRepository.save(booking);
+
+        // Ask conddo-payments to create the checkout. Failure is bounded by
+        // PaymentsGateway's fail-safe contract — empty means "couldn't reach
+        // payments", we keep the booking as PENDING_DEPOSIT so a retry can
+        // generate a fresh checkout URL later.
+        PaymentsGateway.PaymentInitResult payment = paymentsGateway.initBookingDeposit(
+                tenant.getId(), tenant.getSlug(), booking.getId(), customerId,
+                resolvedEmail, resolvedName, depositAmountKobo,
+                "Deposit for " + (service == null ? "studio session" : service), returnUrl)
+                .orElse(null);
+
+        return new InitWithDepositResult(booking, payment);
+    }
+
+    /**
+     * Called by the conddo-payments notify-back endpoint when a deposit
+     * webhook lands. Idempotent — re-applying a PAID notification to an
+     * already-{@code DEPOSIT_PAID} booking is a no-op.
+     */
+    @Transactional
+    public Booking markDepositPaid(UUID bookingId) {
+        tenantSession.bind();
+        Booking booking = require(bookingId);
+        booking.markDepositPaid();
+        return bookingRepository.save(booking);
+    }
+
+    /** What {@link #initWithDeposit} returns — the new booking + the payment URL the FE redirects to. */
+    public record InitWithDepositResult(Booking booking, PaymentsGateway.PaymentInitResult payment) {
     }
 
     /** Upcoming appointments over the next 7 days (excludes cancelled). */

@@ -49,16 +49,19 @@ public class ConddoApiNotifyClient {
             return;
         }
         try {
+            // LinkedHashMap (not Map.of) because exactly one of orderId / bookingId
+            // is set; Map.of refuses null values.
+            java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("tenantId", tenantId);
+            body.put("paymentId", paymentId);
+            body.put("status", status);
+            body.put("orderId", orderId);
+            body.put("bookingId", bookingId);
+            body.put("amountKobo", amountKobo);
             restClient.post()
                     .uri("/api/v1/internal/payments/notify")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of(
-                            "tenantId", tenantId,
-                            "paymentId", paymentId,
-                            "status", status,
-                            "orderId", orderId,
-                            "bookingId", bookingId,
-                            "amountKobo", amountKobo))
+                    .body(body)
                     .retrieve()
                     .toBodilessEntity();
         } catch (RuntimeException ex) {

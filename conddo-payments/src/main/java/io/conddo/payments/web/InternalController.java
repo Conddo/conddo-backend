@@ -1,7 +1,10 @@
 package io.conddo.payments.web;
 
 import io.conddo.payments.common.ApiResponse;
+import io.conddo.payments.domain.Payment;
 import io.conddo.payments.service.PaymentService;
+import io.conddo.payments.web.dto.InitChargeServiceRequest;
+import io.conddo.payments.web.dto.PaymentResponse;
 import io.conddo.payments.web.dto.ProvisionTenantRequest;
 import io.conddo.payments.web.dto.TenantAccountResponse;
 import jakarta.validation.Valid;
@@ -42,5 +45,22 @@ public class InternalController {
                 paymentService.provisionTenantAccount(request.tenantId(), request.tenantSlug(),
                         request.businessName(), request.contactEmail()));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
+    }
+
+    /**
+     * Service-to-service init: same flow as {@link PaymentsController#initiate}
+     * but the tenant is supplied in the body instead of pulled from a Bearer
+     * JWT. Used by conddo-api when a booking-with-deposit happens — conddo-api
+     * holds the tenant context but doesn't have the customer's JWT to forward.
+     */
+    @PostMapping("/charges")
+    public ResponseEntity<ApiResponse<PaymentResponse>> initiateForService(
+            @Valid @RequestBody InitChargeServiceRequest request) {
+        Payment created = paymentService.initPayment(request.tenantId(), request.tenantSlug(),
+                new PaymentService.InitPaymentInput(
+                        request.orderId(), request.bookingId(), request.customerId(),
+                        request.customerEmail(), request.customerName(), request.description(),
+                        request.returnUrl(), request.amountKobo()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(PaymentResponse.from(created)));
     }
 }
