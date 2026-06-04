@@ -104,6 +104,9 @@ class AuthFlowTest {
         registry.add("spring.flyway.placeholders.app_role", () -> APP_USER);
         registry.add("conddo.security.auth.cookie-secure", () -> "false");
         registry.add("conddo.security.cors.allowed-origins", () -> "https://app.conddo.io");
+        // Don't seed sample data in tests — existing assertions rely on
+        // a tenant having zero customers / products immediately after signup.
+        registry.add("conddo.signup.seed-sample-data", () -> "false");
     }
 
     @Autowired
