@@ -3,9 +3,11 @@ package io.conddo.studio.web;
 import io.conddo.studio.common.ApiError;
 import io.conddo.studio.common.ApiResponse;
 import io.conddo.studio.common.ConflictException;
+import io.conddo.studio.common.HomePageRequiredException;
 import io.conddo.studio.common.InvalidCredentialsException;
 import io.conddo.studio.common.LastAdminProtectedException;
 import io.conddo.studio.common.NotFoundException;
+import io.conddo.studio.common.VersionMismatchException;
 import io.conddo.studio.storage.StorageException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +56,31 @@ public class StudioExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleLastAdmin(LastAdminProtectedException ex) {
         return ResponseEntity.unprocessableEntity()
                 .body(ApiResponse.fail(ApiError.of("LAST_ADMIN_PROTECTED", ex.getMessage())));
+    }
+
+    /** §21.3 — every site needs a home page; deleting the only home page is refused. */
+    @ExceptionHandler(HomePageRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHomePage(HomePageRequiredException ex) {
+        return ResponseEntity.unprocessableEntity()
+                .body(ApiResponse.fail(ApiError.of("HOME_PAGE_REQUIRED", ex.getMessage())));
+    }
+
+    /** §21.3 — If-Match version mismatch on a Site mutation. */
+    @ExceptionHandler(VersionMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleVersionMismatch(VersionMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("VERSION_MISMATCH", ex.getMessage(),
+                        List.of(new ApiError.FieldError("expected", String.valueOf(ex.getExpected())),
+                                new ApiError.FieldError("actual", String.valueOf(ex.getActual()))))));
+    }
+
+    /** Hibernate's optimistic-lock failure on concurrent writes — mirror to VERSION_MISMATCH. */
+    @ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleHibernateOptimisticLock(
+            org.springframework.orm.ObjectOptimisticLockingFailureException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("VERSION_MISMATCH",
+                        "Concurrent edit detected — refetch the site and retry")));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

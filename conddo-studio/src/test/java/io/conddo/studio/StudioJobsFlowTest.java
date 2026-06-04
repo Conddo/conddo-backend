@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -172,9 +173,11 @@ class StudioJobsFlowTest {
 
         // Developer sees it in available (skills include WEBSITE_BUILD), claims, starts, submits.
         String devToken = login(DEV);
+        // Other tests in this class may have left WEBSITE_BUILD jobs behind that DEV can also see
+        // — assert at least one (their own) is visible rather than exactly one.
         mockMvc.perform(get("/api/jobs/available").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1));
+                .andExpect(jsonPath("$.data.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
         mockMvc.perform(post("/api/jobs/" + jobId + "/claim").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ASSIGNED"));
@@ -189,9 +192,10 @@ class StudioJobsFlowTest {
 
         // QA picks it up and returns it for revision.
         String qaToken = login(QA);
+        // Tolerant of pollution from other tests that submit jobs (websiteBuilder, etc.).
         mockMvc.perform(get("/api/jobs/qa/queue").header(HttpHeaders.AUTHORIZATION, bearer(qaToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(1));
+                .andExpect(jsonPath("$.data.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
         mockMvc.perform(post("/api/jobs/qa/" + jobId + "/start").header(HttpHeaders.AUTHORIZATION, bearer(qaToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("IN_REVIEW"));
@@ -731,6 +735,136 @@ class StudioJobsFlowTest {
         mockMvc.perform(post("/api/jobs/admin/platform/users/" + adminBId + "/reset-password")
                         .header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
                 .andExpect(status().isForbidden());
+    }
+
+    /**
+     * §21 Website Builder: lazy-create on PUT, optimistic locking via If-Match,
+     * section catalogue validation, home-page guard, auto-publish on submit,
+     * cross-staff write isolation.
+     */
+    @Test
+    void websiteBuilderLifecycleAndGuards() throws Exception {
+        String adminToken = login(ADMIN);
+        MvcResult created = mockMvc.perform(post("/api/jobs/admin/jobs").header(HttpHeaders.AUTHORIZATION, bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jobTypeId", "WEBSITE_BUILD", "title", "Builder Test",
+                                "brief", Map.of("businessName", "Builder Co", "vertical", "fashion")))))
+                .andExpect(status().isCreated()).andReturn();
+        String jobId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+
+        String devToken = login(DEV);
+        mockMvc.perform(post("/api/jobs/" + jobId + "/claim").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/jobs/" + jobId + "/start").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isOk());
+
+        // 1. GET returns 404 until the first PUT.
+        mockMvc.perform(get("/api/jobs/" + jobId + "/site").header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isNotFound());
+
+        // 2. PUT creates the site lazily with a home + about page, each with sections.
+        Map<String, Object> putBody = Map.of(
+                "theme", Map.of("primary", "#7C5CBF"),
+                "meta", Map.of("title", "Builder Co"),
+                "pages", java.util.List.of(
+                        Map.of("slug", "home", "title", "Home", "home", true, "sections",
+                                java.util.List.of(Map.of("type", "HERO",
+                                        "content", Map.of("headline", "Welcome",
+                                                "subheadline", "Sub", "ctaText", "Shop")))),
+                        Map.of("slug", "about", "title", "About", "home", false, "sections",
+                                java.util.List.of(Map.of("type", "ABOUT",
+                                        "content", Map.of("heading", "About us",
+                                                "body", "We make things"))))));
+        MvcResult putResult = mockMvc.perform(put("/api/jobs/" + jobId + "/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(putBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.pages.length()").value(2))
+                .andExpect(jsonPath("$.data.pages[0].slug").value("home"))
+                .andExpect(jsonPath("$.data.pages[0].sections[0].type").value("HERO"))
+                .andReturn();
+        int versionAfterPut = objectMapper.readTree(putResult.getResponse().getContentAsString())
+                .path("data").path("version").asInt();
+        String homePageId = objectMapper.readTree(putResult.getResponse().getContentAsString())
+                .path("data").path("pages").get(0).path("id").asText();
+
+        // 3. Stale If-Match → 409 VERSION_MISMATCH.
+        mockMvc.perform(patch("/api/jobs/" + jobId + "/site/theme")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .header(HttpHeaders.IF_MATCH, "999")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "theme", Map.of("primary", "#FF0000")))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("VERSION_MISMATCH"));
+
+        // 4. PATCH theme with current version succeeds and bumps version.
+        MvcResult themePatched = mockMvc.perform(patch("/api/jobs/" + jobId + "/site/theme")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .header(HttpHeaders.IF_MATCH, String.valueOf(versionAfterPut))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "theme", Map.of("primary", "#FF0000")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.theme.primary").value("#FF0000"))
+                .andReturn();
+        int versionAfterTheme = objectMapper.readTree(themePatched.getResponse().getContentAsString())
+                .path("data").path("version").asInt();
+        assertTrue(versionAfterTheme > versionAfterPut, "theme patch must bump version");
+
+        // 5. Section catalogue: unknown type → 400.
+        mockMvc.perform(post("/api/jobs/" + jobId + "/site/pages/" + homePageId + "/sections")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .header(HttpHeaders.IF_MATCH, String.valueOf(versionAfterTheme))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "type", "BOGUS", "content", Map.of("foo", "bar")))))
+                .andExpect(status().isBadRequest());
+
+        // 6. Missing required key on a valid type → 400.
+        mockMvc.perform(post("/api/jobs/" + jobId + "/site/pages/" + homePageId + "/sections")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .header(HttpHeaders.IF_MATCH, String.valueOf(versionAfterTheme))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "type", "HERO", "content", Map.of()))))
+                .andExpect(status().isBadRequest());
+
+        // 7. Home-page deletion is refused → 422 HOME_PAGE_REQUIRED.
+        mockMvc.perform(delete("/api/jobs/" + jobId + "/site/pages/" + homePageId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken))
+                        .header(HttpHeaders.IF_MATCH, String.valueOf(versionAfterTheme)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("HOME_PAGE_REQUIRED"));
+
+        // 8. Cross-developer write isolation — Dev B cannot mutate Dev A's site.
+        String secEmail = "site-dev-b-" + UUID.randomUUID() + "@studio.test";
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            insertStaff(c, secEmail, new BCryptPasswordEncoder(12).encode(PW),
+                    "Site Dev B", "DEVELOPER", "[\"WEBSITE_BUILD\"]");
+        }
+        String devBToken = login(secEmail);
+        mockMvc.perform(patch("/api/jobs/" + jobId + "/site/theme")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devBToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "theme", Map.of("primary", "#00FF00")))))
+                .andExpect(status().isConflict());
+
+        // 9. Auto-publish on submit: assignee submits → site.status flips to PUBLISHED.
+        mockMvc.perform(post("/api/jobs/" + jobId + "/submit")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/jobs/" + jobId + "/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(devToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.publishedAt").exists());
     }
 
     @Test

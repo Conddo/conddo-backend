@@ -97,6 +97,18 @@ public sealed interface JobLifecycleEvent {
         }
     }
 
+    // ----- Builder (§21.5) ---------------------------------------------------
+
+    /** Any section write — broadcast to assignee, TEAM_LEAD, and ADMIN. */
+    record SiteSectionUpdated(UUID jobId, String jobNumber, UUID pageId, UUID sectionId, int version)
+            implements JobLifecycleEvent {
+    }
+
+    /** Site published (manual or auto-on-submit) — same recipients. */
+    record SitePublished(UUID jobId, String jobNumber, int version,
+                         java.time.OffsetDateTime publishedAt) implements JobLifecycleEvent {
+    }
+
     /** Sentinel UUID for platform-admin events (no job context). */
     UUID NIL = new UUID(0L, 0L);
 }
