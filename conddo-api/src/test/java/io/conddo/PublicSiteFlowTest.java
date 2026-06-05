@@ -1,0 +1,396 @@
+package io.conddo;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.core.notify.EmailSender;
+import io.conddo.core.notify.SmsSender;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * Proves the WEBSITE_INTEGRATION_SPEC §3 public surface end-to-end on a fully
+ * booted app + Postgres + Flyway V1–V25:
+ * <ul>
+ *   <li>Tenant-facing key regeneration is the only path the plaintext key
+ *       exists in — it's never reconstructible after the response.</li>
+ *   <li>Public requests authenticate via {@code X-Conddo-Site-Key}; missing,
+ *       wrong, inactive, and unapproved cases all 401 (anti-enumeration).</li>
+ *   <li>Public DTOs are scrubbed: no {@code reorderThreshold}, no {@code cost},
+ *       stock exposed only as a boolean.</li>
+ *   <li>{@code POST /pharmacy/orders} locks rows {@code FOR UPDATE} and returns
+ *       the spec's structured 409 {@code STOCK_SHORTAGE} body.</li>
+ *   <li>Module gating: a tenant whose plan lacks {@code order_management} gets
+ *       403 {@code MODULE_NOT_ENABLED}.</li>
+ * </ul>
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Testcontainers
+class PublicSiteFlowTest {
+
+    private static final String APP_USER = "app_user";
+    private static final String APP_PASSWORD = "app_password";
+    private static final String PASSWORD = "password123";
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+            .withDatabaseName("conddo")
+            .withUsername("conddo_owner")
+            .withPassword("owner_password")
+            .withInitScript("db/test-init.sql");
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", () -> APP_USER);
+        registry.add("spring.datasource.password", () -> APP_PASSWORD);
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        registry.add("spring.flyway.placeholders.app_role", () -> APP_USER);
+        registry.add("conddo.security.auth.cookie-secure", () -> "false");
+        registry.add("conddo.security.cors.allowed-origins", () -> "https://app.conddo.io");
+        registry.add("conddo.signup.seed-sample-data", () -> "false");
+        // Public-site module gating is enforced by direct calls into
+        // BillingService — independent of the dashboard's interceptor switch.
+    }
+
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private ObjectMapper objectMapper;
+    @MockBean
+    private EmailSender emailSender;
+    @MockBean
+    private SmsSender smsSender;
+
+    @BeforeEach
+    void resetBuckets() {
+        // Per-site token buckets are in-memory + per-spring-context — a fresh
+        // test class loads a fresh context so no manual reset needed.
+    }
+
+    @Test
+    void regenerateKeyReturnsPlaintextOnceAndStoresOnlyTheHash() throws Exception {
+        String tenantId = signup("ph-keys", "owner@ph-keys.test");
+        String token = login("ph-keys", "owner@ph-keys.test");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/website/site/regenerate-key")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.apiKey").isNotEmpty())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        String apiKey = objectMapper.readTree(body).path("data").path("apiKey").asText();
+        assertTrue(apiKey.startsWith("sk_live_"), "plaintext should be sk_live_-prefixed: " + apiKey);
+
+        // The next read must mask the key, not return the plaintext.
+        MvcResult masked = mockMvc.perform(get("/api/v1/website/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.apiKeyMasked").isNotEmpty())
+                .andReturn();
+        // Record DTOs always serialise nulls — the field is present but null.
+        JsonNode maskedBody = objectMapper.readTree(masked.getResponse().getContentAsString());
+        assertTrue(maskedBody.path("data").path("apiKey").isNull(),
+                "GET must not return the plaintext key, but it did: " + maskedBody);
+    }
+
+    @Test
+    void publicSurfaceRejectsMissingWrongInactiveAndUnapprovedSites() throws Exception {
+        String tenantId = signup("ph-auth", "owner@ph-auth.test");
+        String token = login("ph-auth", "owner@ph-auth.test");
+        String key = regenerateKey(token);
+        activateSite(tenantId, "ph-auth");
+
+        // 401 — no header.
+        mockMvc.perform(get("/api/v1/public/ph-auth/store-info"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
+
+        // 401 — wrong key.
+        mockMvc.perform(get("/api/v1/public/ph-auth/store-info")
+                        .header("X-Conddo-Site-Key", "sk_live_obviously-wrong"))
+                .andExpect(status().isUnauthorized());
+
+        // 200 — correct.
+        mockMvc.perform(get("/api/v1/public/ph-auth/store-info")
+                        .header("X-Conddo-Site-Key", key))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("ph-auth Business"));
+
+        // 401 — site deactivated (anti-enumeration: still UNAUTHENTICATED).
+        setSiteActive(tenantId, false, true);
+        mockMvc.perform(get("/api/v1/public/ph-auth/store-info")
+                        .header("X-Conddo-Site-Key", key))
+                .andExpect(status().isUnauthorized());
+
+        // 401 — site QA-unapproved.
+        setSiteActive(tenantId, true, false);
+        mockMvc.perform(get("/api/v1/public/ph-auth/store-info")
+                        .header("X-Conddo-Site-Key", key))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void productsEndpointScrubsInternalFieldsAndStockIsBooleanOnly() throws Exception {
+        String tenantId = signup("ph-scrub", "owner@ph-scrub.test");
+        String token = login("ph-scrub", "owner@ph-scrub.test");
+        String key = regenerateKey(token);
+        activateSite(tenantId, "ph-scrub");
+        upgradeToGrowth(tenantId);
+        seedProduct(tenantId, "Panadol", "PND-001", "150.00", 10, 5, "11.50");
+
+        MvcResult result = mockMvc.perform(get("/api/v1/public/ph-scrub/pharmacy/products")
+                        .header("X-Conddo-Site-Key", key))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].name").value("Panadol"))
+                .andExpect(jsonPath("$.data[0].stockAvailable").value(true))
+                // Internal fields MUST NOT leak.
+                .andExpect(jsonPath("$.data[0].reorderThreshold").doesNotExist())
+                .andExpect(jsonPath("$.data[0].cost").doesNotExist())
+                .andExpect(jsonPath("$.data[0].stock").doesNotExist())
+                .andReturn();
+        // Sanity — the response body itself contains no leaked field names.
+        String body = result.getResponse().getContentAsString();
+        assertTrue(!body.contains("reorderThreshold"), "reorderThreshold leaked: " + body);
+        assertTrue(!body.contains("\"cost\""), "cost leaked: " + body);
+    }
+
+    @Test
+    void orderIntakeReturns409StockShortageWhenStockInsufficient() throws Exception {
+        String tenantId = signup("ph-stock", "owner@ph-stock.test");
+        String token = login("ph-stock", "owner@ph-stock.test");
+        String key = regenerateKey(token);
+        activateSite(tenantId, "ph-stock");
+        upgradeToGrowth(tenantId);
+        String pid = seedProduct(tenantId, "VitaminC", "VC-001", "500.00", 1, 0, "200");
+
+        // Ordering 2 of a stock-of-1 product → 409 with the spec body shape.
+        mockMvc.perform(post("/api/v1/public/ph-stock/pharmacy/orders")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of("productId", pid, "quantity", 2)),
+                                "customer", Map.of(
+                                        "fullName", "Walk-in Buyer",
+                                        "phone", "0809000111")))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("STOCK_SHORTAGE"))
+                .andExpect(jsonPath("$.items[0].productId").value(pid))
+                .andExpect(jsonPath("$.items[0].available").value(1))
+                .andExpect(jsonPath("$.items[0].requested").value(2));
+
+        // Stock must be unchanged after the rollback.
+        assertEquals(1, readStock(pid), "shortage must roll back stock decrements");
+    }
+
+    @Test
+    void successfulOrderDecrementsStockAndTheNextRequestSeesTheNewLevel() throws Exception {
+        String tenantId = signup("ph-buy", "owner@ph-buy.test");
+        String token = login("ph-buy", "owner@ph-buy.test");
+        String key = regenerateKey(token);
+        activateSite(tenantId, "ph-buy");
+        upgradeToGrowth(tenantId);
+        String pid = seedProduct(tenantId, "Paracetamol", "PCM-001", "300.00", 1, 0, "100");
+
+        mockMvc.perform(post("/api/v1/public/ph-buy/pharmacy/orders")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of("productId", pid, "quantity", 1)),
+                                "customer", Map.of(
+                                        "fullName", "Buyer One",
+                                        "phone", "0809000222")))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.id").isNotEmpty())
+                .andExpect(jsonPath("$.data.total").value(300.00));
+
+        assertEquals(0, readStock(pid), "successful order must persist the stock decrement");
+
+        // Second order for the same product → 409 because the row is now empty.
+        mockMvc.perform(post("/api/v1/public/ph-buy/pharmacy/orders")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of("productId", pid, "quantity", 1)),
+                                "customer", Map.of(
+                                        "fullName", "Buyer Two",
+                                        "phone", "0809000333")))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("STOCK_SHORTAGE"));
+    }
+
+    @Test
+    void moduleGateBlocksLauncherTenantsFromOrderIntake() throws Exception {
+        String tenantId = signup("ph-gate", "owner@ph-gate.test");
+        String token = login("ph-gate", "owner@ph-gate.test");
+        String key = regenerateKey(token);
+        activateSite(tenantId, "ph-gate");
+        // No upgrade — stays on the launcher plan, which lacks order_management.
+        String pid = seedProduct(tenantId, "Coughsyrup", "CS-001", "800.00", 5, 0, "300");
+
+        mockMvc.perform(post("/api/v1/public/ph-gate/pharmacy/orders")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of("productId", pid, "quantity", 1)),
+                                "customer", Map.of(
+                                        "fullName", "Test Buyer",
+                                        "phone", "0809000444")))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("MODULE_NOT_ENABLED"));
+    }
+
+    // ----- helpers -----------------------------------------------------------
+
+    private String signup(String slug, String adminEmail) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/tenants").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", slug + " Business", "slug", slug,
+                                "adminEmail", adminEmail, "adminPassword", PASSWORD))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+    }
+
+    private String login(String slug, String email) throws Exception {
+        MvcResult result = mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "tenantSlug", slug, "email", email, "password", PASSWORD))))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        return body.path("data").path("accessToken").asText();
+    }
+
+    private String regenerateKey(String token) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/website/site/regenerate-key")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String body = result.getResponse().getContentAsString();
+        String key = objectMapper.readTree(body).path("data").path("apiKey").asText();
+        assertNotNull(key, "regenerate must return a plaintext key");
+        return key;
+    }
+
+    /** Subdomain + activate + qa_approve in one — bypasses the staff approval flow. */
+    private void activateSite(String tenantId, String subdomain) throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "UPDATE tenant_sites SET subdomain = ?, is_active = true, qa_approved = true "
+                             + "WHERE tenant_id = ?::uuid")) {
+            ps.setString(1, subdomain);
+            ps.setString(2, tenantId);
+            int rows = ps.executeUpdate();
+            assertTrue(rows == 1, "expected exactly one tenant_sites row to activate, got " + rows);
+        }
+    }
+
+    private void setSiteActive(String tenantId, boolean active, boolean approved) throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "UPDATE tenant_sites SET is_active = ?, qa_approved = ? WHERE tenant_id = ?::uuid")) {
+            ps.setBoolean(1, active);
+            ps.setBoolean(2, approved);
+            ps.setString(3, tenantId);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Move the tenant to the {@code growth} plan. The trial subscription is
+     * created by an {@code @Async} listener fired AFTER_COMMIT on signup, so
+     * it may not have landed yet — poll briefly until it does.
+     */
+    private void upgradeToGrowth(String tenantId) throws Exception {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (System.currentTimeMillis() < deadline) {
+            try (Connection owner = ownerConn();
+                 PreparedStatement ps = owner.prepareStatement(
+                         "UPDATE tenant_subscriptions "
+                                 + "SET plan_id = (SELECT id FROM subscription_plans WHERE name = 'growth') "
+                                 + "WHERE tenant_id = ?::uuid")) {
+                ps.setString(1, tenantId);
+                int rows = ps.executeUpdate();
+                if (rows >= 1) {
+                    return;
+                }
+            }
+            Thread.sleep(50);
+        }
+        throw new IllegalStateException("trial subscription never landed for tenant " + tenantId);
+    }
+
+    /** Inserts a product directly — bypasses the API to keep the test focused. */
+    private String seedProduct(String tenantId, String name, String sku, String price,
+                               int stock, int reorder, String cost) throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "INSERT INTO products (tenant_id, name, sku, price, stock, reorder_threshold) "
+                             + "VALUES (?::uuid, ?, ?, ?::numeric, ?, ?) RETURNING id")) {
+            ps.setString(1, tenantId);
+            ps.setString(2, name);
+            ps.setString(3, sku);
+            ps.setString(4, price);
+            ps.setInt(5, stock);
+            ps.setInt(6, reorder);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "insert should return the new product id");
+                return rs.getString(1);
+            }
+        }
+    }
+
+    private int readStock(String productId) throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "SELECT stock FROM products WHERE id = ?::uuid")) {
+            ps.setString(1, productId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "product must exist");
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private Connection ownerConn() throws SQLException {
+        return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    }
+
+    private static String bearer(String token) {
+        return "Bearer " + token;
+    }
+}

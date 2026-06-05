@@ -12,6 +12,7 @@ import io.conddo.core.auth.PhoneNotVerifiedException;
 import io.conddo.core.auth.RegistrationNotFoundException;
 import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
+import io.conddo.api.publicapi.PublicSiteController;
 import io.conddo.core.service.PrescriptionService;
 import io.conddo.core.common.ApiError;
 import io.conddo.core.common.ApiResponse;
@@ -28,7 +29,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Translates exceptions into the standard error envelope (PRD §13.2).
@@ -181,6 +184,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(ApiResponse.fail(ApiError.of("STORAGE_ERROR",
                         "File storage is unavailable. Check the object-storage configuration.")));
+    }
+
+    /**
+     * Public pharmacy order intake lost the stock race (WEBSITE_INTEGRATION_SPEC §3).
+     * Body shape is fixed by the spec so the merchant's website can render a
+     * "show out-of-stock" inline diff:
+     * {@code {"error":"STOCK_SHORTAGE","items":[{productId,available,requested},...]} }.
+     * Intentionally bypasses the {@link ApiResponse} envelope.
+     */
+    @ExceptionHandler(PublicSiteController.StockShortage.class)
+    public ResponseEntity<Map<String, Object>> handleStockShortage(PublicSiteController.StockShortage ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "STOCK_SHORTAGE");
+        body.put("items", ex.getItems());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /** Public-site call hit a feature gated off on the merchant's plan — 403. */
+    @ExceptionHandler(PublicSiteController.ModuleNotEnabled.class)
+    public ResponseEntity<ApiResponse<Void>> handleModuleNotEnabled(PublicSiteController.ModuleNotEnabled ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("MODULE_NOT_ENABLED", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)
