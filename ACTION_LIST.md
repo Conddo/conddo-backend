@@ -967,8 +967,16 @@ Recent Orders table; Website Status card; Today's Bookings; "New Order" CTA.
 ### 11.2 Website  — `/website` ⬜
 **Functionality:** live/in-progress status, subdomain + custom domain, traffic
 (visits/enquiries), configured sections (read-only — the site is built in Conddo
-Studio §8), request edits, connect custom domain (PRO). Tenant side is mostly
+Studio §8), request edits, connect custom domain (Scaler tier). Tenant side is mostly
 **read + request-changes**; the actual build lives in §8.
+
+**Integration spec**: [WEBSITE_INTEGRATION_SPEC.md](./WEBSITE_INTEGRATION_SPEC.md)
+covers the `tenant_sites` registration table, `X-Conddo-Site-Key` auth,
+public `/api/v1/public/{slug}/...` endpoints that the tenant's deployed
+website calls, subdomain routing (Nginx wildcard + wildcard SSL), QA
+preview flow, and the rate-limiting + stock-race-condition rules. FE
+shipped 2026-06-05 (Developer Integration panel on `/website`); BE work
+unblocks real public traffic from tenant sites.
 
 | | Method | Endpoint | Purpose |
 |---|---|---|---|
@@ -976,6 +984,9 @@ Studio §8), request edits, connect custom domain (PRO). Tenant side is mostly
 |🆕| GET | `/api/v1/website/status` | `{state:'live'|'in_progress', domain, visitsToday, enquiries}`. |
 |🆕| GET | `/api/v1/website/sections` | Configured sections + content (read-only snapshot from Studio). |
 |🆕| POST | `/api/v1/website/change-requests` | Owner requests an edit → creates a Studio job/revision. |
+|🆕| GET | `/api/v1/website/site` | `tenant_sites` row for the current tenant. TENANT_ADMIN sees `apiKey` once after regenerate; everyone gets `apiKeyMasked`. See WEBSITE_INTEGRATION_SPEC.md §2. |
+|🆕| POST | `/api/v1/website/site/regenerate-key` | Rotate the public API key. TENANT_ADMIN only. |
+|🆕| GET / POST | `/api/v1/public/{slug}/...` | Public surface called by the tenant's deployed website. See spec §3 for full endpoint list + stock-race rules. |
 |🆕| POST | `/api/v1/website/domain` | Connect a custom domain (PRO/plan-gated). |
 |🆕| GET | `/api/v1/website/analytics?range=` | Visits, enquiries, top pages over a range. |
 
