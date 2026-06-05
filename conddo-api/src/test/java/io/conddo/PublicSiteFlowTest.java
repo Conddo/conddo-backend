@@ -32,6 +32,12 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -283,6 +289,85 @@ class PublicSiteFlowTest {
                                         "phone", "0809000444")))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("MODULE_NOT_ENABLED"));
+    }
+
+    // ===== NOTIFICATIONS — public-website order fans out to merchant ========
+
+    @Test
+    void publicOrderEmailsOwnerAndSmsOwnerAndAddsBellFeedRow() throws Exception {
+        String tenantId = signup("ph-notify", "owner@ph-notify.test");
+        String tenantToken = login("ph-notify", "owner@ph-notify.test");
+        String key = regenerateKey(tenantToken);
+        activateSite(tenantId, "ph-notify");
+        upgradeToGrowth(tenantId);
+        // Signup doesn't capture a phone on the User row, so seed the
+        // tenant's business contactPhone — the listener falls back to it
+        // when the owner user has no phone on file (typical real case).
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "UPDATE tenants SET contact_phone = ? WHERE id = ?::uuid")) {
+            ps.setString(1, "+2348091234567");
+            ps.setString(2, tenantId);
+            ps.executeUpdate();
+        }
+        String pid = seedProduct(tenantId, "Vit C", "VC-1", "500.00", 5, 0, "100");
+
+        mockMvc.perform(post("/api/v1/public/ph-notify/pharmacy/orders")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of("productId", pid, "quantity", 2)),
+                                "customer", Map.of(
+                                        "fullName", "Walk-in Buyer",
+                                        "phone", "0809000111")))))
+                .andExpect(status().isCreated());
+
+        // @Async listener — give it up to 5s to fire.
+        verify(emailSender, timeout(5_000)).send(
+                eq("owner@ph-notify.test"),
+                contains("New order"),
+                contains("Walk-in Buyer"));
+        verify(smsSender, timeout(5_000)).send(
+                eq("+2348091234567"),
+                contains("Walk-in Buyer"));
+
+        // Bell feed gets the ORDER row.
+        MvcResult feed = mockMvc.perform(get("/api/v1/notifications")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tenantToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].type").value("ORDER"))
+                .andReturn();
+        JsonNode top = objectMapper.readTree(feed.getResponse().getContentAsString())
+                .path("data").path("items").get(0);
+        assertTrue(top.path("title").asText().contains("New order"),
+                "bell feed title should mention the order: " + top);
+    }
+
+    @Test
+    void rolledBackOrderDoesNotNotify() throws Exception {
+        String tenantId = signup("ph-rollback", "owner@ph-rollback.test");
+        String tenantToken = login("ph-rollback", "owner@ph-rollback.test");
+        String key = regenerateKey(tenantToken);
+        activateSite(tenantId, "ph-rollback");
+        upgradeToGrowth(tenantId);
+        String pid = seedProduct(tenantId, "Out-of-stock", "OS-1", "500.00", 1, 0, "100");
+
+        // Order qty=2 of a 1-stock product → 409 STOCK_SHORTAGE, transaction rolls back.
+        mockMvc.perform(post("/api/v1/public/ph-rollback/pharmacy/orders")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "items", List.of(Map.of("productId", pid, "quantity", 2)),
+                                "customer", Map.of(
+                                        "fullName", "Bogus Buyer",
+                                        "phone", "0809000222")))))
+                .andExpect(status().isConflict());
+
+        // 500ms is plenty for any AFTER_COMMIT misfire to land. The buyer's
+        // name is unique to this test, so verify it never reaches the senders.
+        Thread.sleep(500);
+        verify(emailSender, never()).send(anyString(), anyString(), contains("Bogus Buyer"));
+        verify(smsSender, never()).send(anyString(), contains("Bogus Buyer"));
     }
 
     // ===== ACTIVATION FLOW — claim subdomain → submit → SUPER_ADMIN approve ==

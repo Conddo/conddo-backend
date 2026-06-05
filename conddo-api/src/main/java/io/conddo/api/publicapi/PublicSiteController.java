@@ -8,6 +8,7 @@ import io.conddo.core.domain.Customer;
 import io.conddo.core.domain.Order;
 import io.conddo.core.domain.Product;
 import io.conddo.core.domain.Tenant;
+import io.conddo.core.events.OrderCreatedEvent;
 import io.conddo.core.repository.CustomerRepository;
 import io.conddo.core.repository.ProductRepository;
 import io.conddo.core.repository.TenantRepository;
@@ -19,6 +20,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import jakarta.validation.Valid;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +59,7 @@ public class PublicSiteController {
     private final OrderService orderService;
     private final BillingService billingService;
     private final TenantSession tenantSession;
+    private final ApplicationEventPublisher events;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -66,13 +69,15 @@ public class PublicSiteController {
                                 CustomerRepository customerRepository,
                                 OrderService orderService,
                                 BillingService billingService,
-                                TenantSession tenantSession) {
+                                TenantSession tenantSession,
+                                ApplicationEventPublisher events) {
         this.tenantRepository = tenantRepository;
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
         this.orderService = orderService;
         this.billingService = billingService;
         this.tenantSession = tenantSession;
+        this.events = events;
     }
 
     @GetMapping("/store-info")
@@ -171,6 +176,17 @@ public class PublicSiteController {
                 orderItems,
                 new LinkedHashMap<>(),   // no measurements on a pharmacy order
                 request.deliveryAddress() == null ? null : "Delivery: " + request.deliveryAddress());
+
+        // Fire the notification fan-out (bell feed + email + SMS). Published
+        // before the @Transactional method returns so Spring promotes it to
+        // AFTER_COMMIT — a rolled-back order never notifies.
+        events.publishEvent(new OrderCreatedEvent(
+                TenantContext.require(),
+                created.getId(),
+                created.getReference(),
+                customer.getFullName(),
+                total,
+                OrderCreatedEvent.Source.PUBLIC_WEBSITE));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", created.getId());

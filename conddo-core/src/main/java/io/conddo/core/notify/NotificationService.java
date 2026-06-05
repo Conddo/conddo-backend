@@ -54,6 +54,42 @@ public class NotificationService {
         }
     }
 
+    /**
+     * Alerts a merchant that a new order landed on their public website
+     * (WEBSITE_INTEGRATION_SPEC §3 / merchant-readiness slice 2). Both
+     * channels are best-effort and independent — one provider failing
+     * never blocks the other, and never bubbles to the caller (the
+     * checkout response has already gone back to the customer).
+     */
+    public void sendOrderAlert(String toEmail, String toPhone, String businessName,
+                               String customerName, String orderReference, String totalNgn) {
+        String subject = "New order on your conddo.io site";
+        String text = "Hi " + nullSafe(businessName) + ",\n\n"
+                + nullSafe(customerName) + " just placed order " + nullSafe(orderReference)
+                + " for ₦" + nullSafe(totalNgn) + " on your conddo.io website.\n\n"
+                + "View it on your dashboard: " + appBaseUrl + "/orders/" + nullSafe(orderReference) + "\n\n"
+                + "— Conddo";
+        if (toEmail != null && !toEmail.isBlank()) {
+            try {
+                emailSender.send(toEmail, subject, text);
+            } catch (RuntimeException ignored) {
+                // Provider blip — SMS is the fallback channel; swallow.
+            }
+        }
+        if (toPhone != null && !toPhone.isBlank()) {
+            String sms = "New conddo.io order " + nullSafe(orderReference)
+                    + " — ₦" + nullSafe(totalNgn) + " from " + nullSafe(customerName);
+            try {
+                smsSender.send(toPhone, sms);
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private static String nullSafe(String s) {
+        return s == null ? "" : s;
+    }
+
     /** Password reset — delivers the reset token (and a reset link) by email. */
     public void sendPasswordReset(String toEmail, String resetToken) {
         String subject = "Reset your Conddo password";
