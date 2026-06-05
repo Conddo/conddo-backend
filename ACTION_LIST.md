@@ -1045,11 +1045,28 @@ link** (clients self-book) + copy; weekly performance (count + projected revenue
 
 | | Method | Endpoint | Purpose |
 |---|---|---|---|
-|🆕| GET | `/api/v1/inventory/products?search=&category=&lowStock=&page=&size=` | List. |
-|🆕| POST / GET / PATCH / DELETE | `/api/v1/inventory/products[/{id}]` | CRUD product. |
+|🆕| GET | `/api/v1/inventory/products?search=&category=&lowStock=&expiringWithinDays=&page=&size=` | List. `expiringWithinDays` is pharmacy-only (PHARMACY_DEEP_DIVE_SPEC.md §2). |
+|🆕| POST / GET / PATCH / DELETE | `/api/v1/inventory/products[/{id}]` | CRUD product. Create/Update accept optional `expiryDate` (YYYY-MM-DD) + `batchNumber` (see spec §2). |
 |🆕| POST | `/api/v1/inventory/products/{id}/adjust` | Stock adjustment `{delta, reason}`. |
 |🆕| GET | `/api/v1/inventory/low-stock` | Items at/below reorder threshold (dashboard KPI source). |
 |🆕| GET / POST | `/api/v1/inventory/categories` | Manage categories. |
+
+### 11.13b Prescriptions  — `/prescriptions` ⬜ TODO (pharmacy vertical)
+**Spec**: [PHARMACY_DEEP_DIVE_SPEC.md](./PHARMACY_DEEP_DIVE_SPEC.md) — full
+data model, endpoint contracts, SMS-reminder behaviour, seeder updates, and
+test coverage list. FE shipped 2026-06-05; this BE work blocks E2E for any
+pharmacy tenant. Phase 1 (entity + endpoints + Product.expiry_date) is the
+minimum to launch; Phase 2 (scheduled refill cron + batch tracking) ships
+after.
+
+| | Method | Endpoint | Purpose |
+|---|---|---|---|
+|🆕| GET | `/api/v1/prescriptions?search=&status=&customerId=&page=&size=` | List. `status` ∈ active / due_soon / overdue / one_off. |
+|🆕| GET | `/api/v1/prescriptions/{id}` | Detail. |
+|🆕| GET | `/api/v1/prescriptions/summary` | `{total, dueSoon, overdue, oneOff}` for dashboard KPIs. |
+|🆕| POST / PATCH / DELETE | `/api/v1/prescriptions[/{id}]` | CRUD. |
+|🆕| POST | `/api/v1/prescriptions/{id}/fill` | Stamp `last_filled_at = now()`, recompute `next_refill_due`. |
+|🆕| POST | `/api/v1/prescriptions/{id}/remind` | Send SMS refill reminder (reuses `SmsSender` per OrderService.remind pattern). |
 
 ### 11.7 Payments  — `/payments` ✅
 **Functionality:** KPI cards (this month / outstanding / paid invoices / overdue);
