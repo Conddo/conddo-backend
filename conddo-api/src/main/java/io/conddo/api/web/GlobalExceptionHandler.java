@@ -14,6 +14,7 @@ import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
 import io.conddo.api.publicapi.PublicSiteController;
 import io.conddo.core.service.PrescriptionService;
+import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.common.ApiError;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.common.NotFoundException;
@@ -206,6 +207,27 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleModuleNotEnabled(PublicSiteController.ModuleNotEnabled ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.fail(ApiError.of("MODULE_NOT_ENABLED", ex.getMessage())));
+    }
+
+    /** Tenant tried to claim a subdomain that violates the shared RFC-1035 rules. */
+    @ExceptionHandler(TenantSiteService.InvalidSubdomainException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidSubdomain(TenantSiteService.InvalidSubdomainException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("INVALID_SUBDOMAIN", ex.getMessage())));
+    }
+
+    /** Subdomain collides with another tenant's claim. */
+    @ExceptionHandler(TenantSiteService.SubdomainTakenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSubdomainTaken(TenantSiteService.SubdomainTakenException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("SUBDOMAIN_TAKEN", ex.getMessage())));
+    }
+
+    /** Submitted URL failed the http/https scheme check. */
+    @ExceptionHandler(TenantSiteService.InvalidSubmittedUrlException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidSubmittedUrl(TenantSiteService.InvalidSubmittedUrlException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("INVALID_SUBMITTED_URL", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)

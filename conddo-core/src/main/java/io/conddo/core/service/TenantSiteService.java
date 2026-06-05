@@ -2,24 +2,31 @@ package io.conddo.core.service;
 
 import io.conddo.core.auth.PasswordHasher;
 import io.conddo.core.common.NotFoundException;
+import io.conddo.core.domain.SubdomainRules;
+import io.conddo.core.domain.Tenant;
 import io.conddo.core.domain.TenantSite;
+import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.repository.TenantSiteRepository;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantSession;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Tenant Website Integration (WEBSITE_INTEGRATION_SPEC §1, §2). Owns the
- * API-key lifecycle (generate, rotate, verify), tenant-facing reads, and the
- * public traffic resolver.
+ * API-key lifecycle (generate, rotate, verify), the tenant-facing
+ * read/claim/submit flow, the public traffic resolver, and the admin
+ * QA-approval pipeline.
  *
  * <p>The plaintext key is the only output of {@link #regenerateKey} that
  * matters — it's never persisted. Storage is bcrypt + last4 (for the masked
@@ -32,6 +39,7 @@ public class TenantSiteService {
     private static final int KEY_BODY_BYTES = 24;   // → 32 base64-url chars
 
     private final TenantSiteRepository repository;
+    private final TenantRepository tenantRepository;
     private final PasswordHasher passwordHasher;
     private final TenantSession tenantSession;
     private final SecureRandom random = new SecureRandom();
@@ -39,9 +47,12 @@ public class TenantSiteService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    public TenantSiteService(TenantSiteRepository repository, PasswordHasher passwordHasher,
+    public TenantSiteService(TenantSiteRepository repository,
+                             TenantRepository tenantRepository,
+                             PasswordHasher passwordHasher,
                              TenantSession tenantSession) {
         this.repository = repository;
+        this.tenantRepository = tenantRepository;
         this.passwordHasher = passwordHasher;
         this.tenantSession = tenantSession;
     }
@@ -76,23 +87,68 @@ public class TenantSiteService {
         return new KeyResult(site, plaintext);
     }
 
+    /**
+     * Tenant claims (or renames) their subdomain. Validates RFC-1035 + the
+     * shared reserved list ({@link SubdomainRules}) before persist; surfaces
+     * the unique-index collision as {@link SubdomainTakenException} so the FE
+     * can render a clean "already taken" message instead of a 500.
+     */
+    @Transactional
+    public TenantSite updateSubdomain(String newSubdomain) {
+        tenantSession.bind();
+        String normalised = SubdomainRules.normalise(newSubdomain);
+        if (!SubdomainRules.isValid(normalised)) {
+            throw new InvalidSubdomainException(
+                    "Subdomain must be 3–63 lowercase letters/digits/hyphens, not a reserved label.");
+        }
+        TenantSite site = repository.findFirstByOrderByCreatedAtDesc()
+                .orElseGet(() -> initialiseSite(TenantContext.require()));
+        site.setSubdomain(normalised);
+        try {
+            return repository.saveAndFlush(site);
+        } catch (DataIntegrityViolationException ex) {
+            throw new SubdomainTakenException(
+                    "Subdomain '" + normalised + "' is already taken — try a different one.");
+        }
+    }
+
+    /**
+     * Tenant submits a built URL for QA review. The url itself is stored on
+     * the site row; activation still requires {@link #approve} from a STAFF /
+     * SUPER_ADMIN. Re-submission is allowed (just overwrites the URL).
+     */
+    @Transactional
+    public TenantSite submitForReview(String submittedUrl) {
+        tenantSession.bind();
+        if (submittedUrl == null || submittedUrl.isBlank()) {
+            throw new InvalidSubmittedUrlException("submittedUrl cannot be blank");
+        }
+        String trimmed = submittedUrl.trim();
+        if (!(trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
+            throw new InvalidSubmittedUrlException(
+                    "submittedUrl must start with http:// or https://");
+        }
+        TenantSite site = repository.findFirstByOrderByCreatedAtDesc()
+                .orElseGet(() -> initialiseSite(TenantContext.require()));
+        site.setSubmittedUrl(trimmed);
+        return repository.save(site);
+    }
+
     // ----- public resolver ---------------------------------------------------
 
     /**
      * Public traffic resolution. The header API key must bcrypt-match the
-     * stored hash, the site must be active + qa_approved. Bypasses RLS — this
-     * runs before tenant context is bound. Returns the site only when every
-     * check passes; the resolved tenant_id is then bound by the caller for
-     * the rest of the request.
+     * stored hash, the site must be active + qa_approved. Bypasses RLS via
+     * the V25 {@code app.public_resolver} carve-out — this runs before tenant
+     * context is bound. Returns the site only when every check passes; the
+     * resolved tenant_id is then bound by the caller for the rest of the
+     * request.
      */
     @Transactional(readOnly = true)
     public Optional<TenantSite> resolveBySubdomain(String subdomain, String suppliedKey) {
         if (subdomain == null || subdomain.isBlank() || suppliedKey == null || suppliedKey.isBlank()) {
             return Optional.empty();
         }
-        // Carve out the cross-tenant read (V25 policy) — flag scopes to this
-        // transaction only. WITH CHECK still demands a bound tenant_id, so
-        // this can only widen SELECT, never INSERT/UPDATE.
         entityManager.createNativeQuery("SELECT set_config('app.public_resolver', 'true', true)")
                 .getSingleResult();
         Optional<TenantSite> match = repository.findBySubdomain(subdomain.trim().toLowerCase());
@@ -103,20 +159,86 @@ public class TenantSiteService {
         if (!site.isActive() || !site.isQaApproved()) {
             return Optional.empty();
         }
-        // Constant-time within bcrypt's own compare.
         if (!passwordHasher.matches(suppliedKey, site.getApiKeyHash())) {
             return Optional.empty();
         }
         return match;
     }
 
+    // ----- staff / admin -----------------------------------------------------
+
+    /** QA queue for STAFF / SUPER_ADMIN. Cross-tenant by design. */
+    @Transactional(readOnly = true)
+    public List<TenantSite> listForReview(SiteFilter filter) {
+        tenantSession.bindCrossTenant();
+        return switch (filter) {
+            case PENDING -> repository.findByQaApprovedFalseOrderByCreatedAtDesc();
+            case APPROVED -> repository.findByQaApprovedTrueOrderByCreatedAtDesc();
+            case ACTIVE -> repository.findByActiveTrueOrderByCreatedAtDesc();
+            case ALL -> repository.findAllByOrderByCreatedAtDesc();
+        };
+    }
+
+    /**
+     * Admin approval flow. Marks {@code qa_approved} + {@code is_active} and
+     * stamps the reviewer/timestamp. Idempotent: re-approving an already-live
+     * site just re-stamps the metadata.
+     */
+    @Transactional
+    public TenantSite approve(UUID siteId, UUID staffId) {
+        tenantSession.bindCrossTenant();
+        TenantSite site = repository.findById(siteId)
+                .orElseThrow(() -> new NotFoundException("Site not found: " + siteId));
+        if (site.getSubdomain() == null || site.getSubdomain().isBlank()) {
+            throw new InvalidSubdomainException(
+                    "Cannot approve — tenant has not claimed a subdomain yet.");
+        }
+        site.approveQa(staffId, OffsetDateTime.now());
+        site.activate();
+        return repository.save(site);
+    }
+
+    /** Admin take-down. Flips is_active=false; does not undo qa_approved. */
+    @Transactional
+    public TenantSite deactivate(UUID siteId) {
+        tenantSession.bindCrossTenant();
+        TenantSite site = repository.findById(siteId)
+                .orElseThrow(() -> new NotFoundException("Site not found: " + siteId));
+        site.deactivate();
+        return repository.save(site);
+    }
+
     // ----- helpers -----------------------------------------------------------
 
+    /**
+     * First-time site initialisation. Seeds the subdomain to the tenant slug
+     * when the slug is RFC-1035 valid and not already taken — most merchants
+     * never need to claim explicitly. Placeholder hash is overwritten by the
+     * caller's {@code rotateKey} on the same row.
+     */
     private TenantSite initialiseSite(UUID tenantId) {
-        // Subdomain defaults to the tenant slug — Studio admin can rename
-        // later. apiKey hash is a placeholder; the caller immediately
-        // calls rotateKey() on the returned entity.
-        return repository.save(new TenantSite(tenantId, null, "placeholder", "0000"));
+        String defaultSubdomain = defaultSubdomainFor(tenantId);
+        return repository.save(new TenantSite(tenantId, defaultSubdomain, "placeholder", "0000"));
+    }
+
+    private String defaultSubdomainFor(UUID tenantId) {
+        Tenant tenant = tenantRepository.findById(tenantId).orElse(null);
+        if (tenant == null) {
+            return null;
+        }
+        String candidate = SubdomainRules.normalise(tenant.getSlug());
+        if (!SubdomainRules.isValid(candidate)) {
+            return null;
+        }
+        // Cross-tenant SELECT — we're checking whether anyone else already
+        // owns this subdomain. The check is by-subdomain not by-tenant, so
+        // the existing public-resolver carve-out is the right tool.
+        entityManager.createNativeQuery("SELECT set_config('app.public_resolver', 'true', true)")
+                .getSingleResult();
+        if (repository.findBySubdomain(candidate).isPresent()) {
+            return null;
+        }
+        return candidate;
     }
 
     private String newPlaintextKey() {
@@ -126,5 +248,27 @@ public class TenantSiteService {
     }
 
     public record KeyResult(TenantSite site, String plaintextKey) {
+    }
+
+    public enum SiteFilter {
+        PENDING, APPROVED, ACTIVE, ALL
+    }
+
+    public static class InvalidSubdomainException extends RuntimeException {
+        public InvalidSubdomainException(String msg) {
+            super(msg);
+        }
+    }
+
+    public static class SubdomainTakenException extends RuntimeException {
+        public SubdomainTakenException(String msg) {
+            super(msg);
+        }
+    }
+
+    public static class InvalidSubmittedUrlException extends RuntimeException {
+        public InvalidSubmittedUrlException(String msg) {
+            super(msg);
+        }
     }
 }

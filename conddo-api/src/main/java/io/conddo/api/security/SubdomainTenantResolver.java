@@ -1,12 +1,12 @@
 package io.conddo.api.security;
 
+import io.conddo.core.domain.SubdomainRules;
 import io.conddo.core.domain.Tenant;
 import io.conddo.core.repository.TenantRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -26,8 +26,6 @@ import java.util.concurrent.ConcurrentMap;
 @Component
 public class SubdomainTenantResolver {
 
-    private static final Set<String> RESERVED =
-            Set.of("api", "app", "www", "admin", "staff", "studio", "mail", "static", "cdn");
     private static final long TTL_MILLIS = 300_000L;   // 5 minutes (matches §6.3)
 
     private final TenantRepository tenantRepository;
@@ -71,7 +69,7 @@ public class SubdomainTenantResolver {
             return null;
         }
         String sub = h.substring(0, h.length() - suffix.length());
-        if (sub.isEmpty() || sub.contains(".") || RESERVED.contains(sub)) {
+        if (sub.isEmpty() || sub.contains(".") || SubdomainRules.RESERVED.contains(sub)) {
             return null;
         }
         return sub;

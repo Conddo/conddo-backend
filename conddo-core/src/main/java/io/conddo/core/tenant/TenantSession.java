@@ -35,4 +35,18 @@ public class TenantSession {
                 .setParameter("tenantId", tenantId.toString())
                 .getSingleResult();
     }
+
+    /**
+     * Enables the staff/admin cross-tenant carve-out for the current
+     * transaction. Honoured by RLS policies that opt in (V26 onwards) —
+     * widens both USING and WITH CHECK so a SUPER_ADMIN with no bound tenant
+     * can read and write across tenants. Transaction-local (the {@code true}
+     * arg to set_config), so it never leaks to other requests on the pooled
+     * connection. Caller is responsible for gating with @PreAuthorize.
+     */
+    public void bindCrossTenant() {
+        entityManager
+                .createNativeQuery("SELECT set_config('app.cross_tenant', 'true', true)")
+                .getSingleResult();
+    }
 }

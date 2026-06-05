@@ -2,6 +2,7 @@ package io.conddo;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.core.auth.PasswordHasher;
 import io.conddo.core.notify.EmailSender;
 import io.conddo.core.notify.SmsSender;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -60,6 +62,10 @@ class PublicSiteFlowTest {
     private static final String APP_USER = "app_user";
     private static final String APP_PASSWORD = "app_password";
     private static final String PASSWORD = "password123";
+
+    private static final String SUPER_EMAIL = "super@conddo.io";
+    private static final String SUPER_PASSWORD = "super-secret-pw";
+    private static final String SUPER_PASSWORD_HASH = new PasswordHasher().hash(SUPER_PASSWORD);
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -94,9 +100,16 @@ class PublicSiteFlowTest {
     private SmsSender smsSender;
 
     @BeforeEach
-    void resetBuckets() {
-        // Per-site token buckets are in-memory + per-spring-context — a fresh
-        // test class loads a fresh context so no manual reset needed.
+    void seedSuperAdmin() throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "INSERT INTO staff_users (email, password_hash, full_name, internal_role) "
+                             + "VALUES (?, ?, ?, 'SUPER_ADMIN') ON CONFLICT (email) DO NOTHING")) {
+            ps.setString(1, SUPER_EMAIL);
+            ps.setString(2, SUPER_PASSWORD_HASH);
+            ps.setString(3, "Platform Admin");
+            ps.executeUpdate();
+        }
     }
 
     @Test
@@ -272,6 +285,210 @@ class PublicSiteFlowTest {
                 .andExpect(jsonPath("$.error.code").value("MODULE_NOT_ENABLED"));
     }
 
+    // ===== ACTIVATION FLOW — claim subdomain → submit → SUPER_ADMIN approve ==
+
+    @Test
+    void regenerateKeyDefaultsSubdomainToTenantSlug() throws Exception {
+        signup("ph-default", "owner@ph-default.test");
+        String token = login("ph-default", "owner@ph-default.test");
+        regenerateKey(token);
+
+        mockMvc.perform(get("/api/v1/website/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.subdomain").value("ph-default"));
+    }
+
+    @Test
+    void patchSubdomainRejectsInvalidAndReservedAndDuplicates() throws Exception {
+        signup("ph-claim-a", "owner@ph-claim-a.test");
+        String tokenA = login("ph-claim-a", "owner@ph-claim-a.test");
+        regenerateKey(tokenA);
+
+        // Empty/reserved/RFC-1035 violations → 400 INVALID_SUBDOMAIN.
+        mockMvc.perform(patch("/api/v1/website/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenA))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("subdomain", "API"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_SUBDOMAIN"));
+
+        mockMvc.perform(patch("/api/v1/website/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenA))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("subdomain", "ab"))))
+                .andExpect(status().isBadRequest());
+
+        // Valid rename works.
+        mockMvc.perform(patch("/api/v1/website/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenA))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("subdomain", "claim-a-rename"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.subdomain").value("claim-a-rename"));
+
+        // Second tenant tries to take the same one — 409 SUBDOMAIN_TAKEN.
+        signup("ph-claim-b", "owner@ph-claim-b.test");
+        String tokenB = login("ph-claim-b", "owner@ph-claim-b.test");
+        regenerateKey(tokenB);
+        mockMvc.perform(patch("/api/v1/website/site")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tokenB))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("subdomain", "claim-a-rename"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SUBDOMAIN_TAKEN"));
+    }
+
+    @Test
+    void submitForReviewStoresUrlButDoesNotActivate() throws Exception {
+        signup("ph-submit", "owner@ph-submit.test");
+        String token = login("ph-submit", "owner@ph-submit.test");
+        regenerateKey(token);
+
+        // Bad URL → 400.
+        mockMvc.perform(post("/api/v1/website/site/submit")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("submittedUrl", "ftp://bad"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_SUBMITTED_URL"));
+
+        // Good URL → 200, but the site is NOT yet live.
+        mockMvc.perform(post("/api/v1/website/site/submit")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("submittedUrl", "https://ph-submit.example.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.submittedUrl").value("https://ph-submit.example.com"))
+                .andExpect(jsonPath("$.data.isActive").value(false))
+                .andExpect(jsonPath("$.data.qaApproved").value(false));
+    }
+
+    @Test
+    void superAdminApproveActivatesSiteAndPublicSurfaceBecomesReachable() throws Exception {
+        signup("ph-approve", "owner@ph-approve.test");
+        String tenantToken = login("ph-approve", "owner@ph-approve.test");
+        String apiKey = regenerateKey(tenantToken);
+        // Submit a URL so it appears in the QA queue with a real submitted_url.
+        mockMvc.perform(post("/api/v1/website/site/submit")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tenantToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("submittedUrl", "https://ph-approve.example.com"))))
+                .andExpect(status().isOk());
+
+        // Public surface should be 401 (site not active+approved yet).
+        mockMvc.perform(get("/api/v1/public/ph-approve/store-info")
+                        .header("X-Conddo-Site-Key", apiKey))
+                .andExpect(status().isUnauthorized());
+
+        // SUPER_ADMIN approves it.
+        String staffToken = staffLogin();
+        String siteId = readSiteId("ph-approve");
+        mockMvc.perform(post("/api/v1/admin/sites/" + siteId + "/approve")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(staffToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isActive").value(true))
+                .andExpect(jsonPath("$.data.qaApproved").value(true))
+                .andExpect(jsonPath("$.data.qaApprovedAt").isNotEmpty());
+
+        // Public surface now reachable.
+        mockMvc.perform(get("/api/v1/public/ph-approve/store-info")
+                        .header("X-Conddo-Site-Key", apiKey))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("ph-approve Business"));
+    }
+
+    @Test
+    void superAdminDeactivateTakesSiteOffline() throws Exception {
+        signup("ph-takedown", "owner@ph-takedown.test");
+        String tenantToken = login("ph-takedown", "owner@ph-takedown.test");
+        String apiKey = regenerateKey(tenantToken);
+        // Pre-approve via the admin flow (mirrors the real lifecycle).
+        String staffToken = staffLogin();
+        String siteId = readSiteId("ph-takedown");
+        mockMvc.perform(post("/api/v1/admin/sites/" + siteId + "/approve")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(staffToken)))
+                .andExpect(status().isOk());
+
+        // Sanity — live.
+        mockMvc.perform(get("/api/v1/public/ph-takedown/store-info")
+                        .header("X-Conddo-Site-Key", apiKey))
+                .andExpect(status().isOk());
+
+        // Deactivate.
+        mockMvc.perform(post("/api/v1/admin/sites/" + siteId + "/deactivate")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(staffToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isActive").value(false))
+                .andExpect(jsonPath("$.data.qaApproved").value(true)); // approval stamp stays
+
+        // Public surface offline.
+        mockMvc.perform(get("/api/v1/public/ph-takedown/store-info")
+                        .header("X-Conddo-Site-Key", apiKey))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void superAdminListReturnsPendingSitesAcrossTenants() throws Exception {
+        signup("ph-list-a", "owner@ph-list-a.test");
+        String tokenA = login("ph-list-a", "owner@ph-list-a.test");
+        regenerateKey(tokenA);
+        signup("ph-list-b", "owner@ph-list-b.test");
+        String tokenB = login("ph-list-b", "owner@ph-list-b.test");
+        regenerateKey(tokenB);
+
+        String staffToken = staffLogin();
+        // Both sites are unapproved; the queue must contain BOTH (cross-tenant).
+        MvcResult result = mockMvc.perform(get("/api/v1/admin/sites?filter=pending")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(staffToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode rows = objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data");
+        assertTrue(rows.isArray(), "expected an array");
+        boolean foundA = false, foundB = false;
+        for (JsonNode row : rows) {
+            String sub = row.path("subdomain").asText();
+            if ("ph-list-a".equals(sub)) foundA = true;
+            if ("ph-list-b".equals(sub)) foundB = true;
+        }
+        assertTrue(foundA && foundB, "both pending tenant sites must appear in the cross-tenant queue: " + rows);
+    }
+
+    @Test
+    void approveWithoutSubdomainIs400() throws Exception {
+        signup("ph-no-sub", "owner@ph-no-sub.test");
+        String tenantToken = login("ph-no-sub", "owner@ph-no-sub.test");
+        regenerateKey(tenantToken);
+        // Strip the subdomain to simulate the legacy state where it was null.
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "UPDATE tenant_sites SET subdomain = NULL WHERE tenant_id = ?::uuid")) {
+            ps.setString(1, readTenantId("ph-no-sub"));
+            ps.executeUpdate();
+        }
+
+        String staffToken = staffLogin();
+        String siteId = readSiteId("ph-no-sub");
+        mockMvc.perform(post("/api/v1/admin/sites/" + siteId + "/approve")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(staffToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_SUBDOMAIN"));
+    }
+
+    @Test
+    void tenantWithoutAdminRoleCannotApprove() throws Exception {
+        signup("ph-rbac", "owner@ph-rbac.test");
+        String tenantToken = login("ph-rbac", "owner@ph-rbac.test");
+        regenerateKey(tenantToken);
+        String siteId = readSiteId("ph-rbac");
+
+        // Authenticated TENANT_ADMIN trying the admin route → 403, NOT 200.
+        mockMvc.perform(post("/api/v1/admin/sites/" + siteId + "/approve")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(tenantToken)))
+                .andExpect(status().isForbidden());
+    }
+
     // ----- helpers -----------------------------------------------------------
 
     private String signup(String slug, String adminEmail) throws Exception {
@@ -388,6 +605,43 @@ class PublicSiteFlowTest {
 
     private Connection ownerConn() throws SQLException {
         return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+    }
+
+    /** SUPER_ADMIN login — seeded in @BeforeEach, no tenant slug, no refresh cookie. */
+    private String staffLogin() throws Exception {
+        MvcResult result = mockMvc.perform(post("/auth/staff/login").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", SUPER_EMAIL, "password", SUPER_PASSWORD))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("accessToken").asText();
+    }
+
+    /** Reads the tenant_sites row id for a given tenant slug. Owner connection bypasses RLS. */
+    private String readSiteId(String tenantSlug) throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement(
+                     "SELECT ts.id FROM tenant_sites ts JOIN tenants t ON t.id = ts.tenant_id "
+                             + "WHERE t.slug = ?")) {
+            ps.setString(1, tenantSlug);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "expected one tenant_sites row for slug=" + tenantSlug);
+                return rs.getString(1);
+            }
+        }
+    }
+
+    /** Reads the tenant uuid for a slug. */
+    private String readTenantId(String slug) throws SQLException {
+        try (Connection owner = ownerConn();
+             PreparedStatement ps = owner.prepareStatement("SELECT id FROM tenants WHERE slug = ?")) {
+            ps.setString(1, slug);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "tenant must exist: " + slug);
+                return rs.getString(1);
+            }
+        }
     }
 
     private static String bearer(String token) {

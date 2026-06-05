@@ -19,4 +19,14 @@ public interface TenantSiteRepository extends JpaRepository<TenantSite, UUID> {
 
     /** Public traffic resolver — used inside a non-tenant-bound query. */
     Optional<TenantSite> findBySubdomain(String subdomain);
+
+    // ----- staff / admin (cross-tenant; needs app.cross_tenant=true) ---------
+
+    java.util.List<TenantSite> findByQaApprovedFalseOrderByCreatedAtDesc();
+
+    java.util.List<TenantSite> findByQaApprovedTrueOrderByCreatedAtDesc();
+
+    java.util.List<TenantSite> findByActiveTrueOrderByCreatedAtDesc();
+
+    java.util.List<TenantSite> findAllByOrderByCreatedAtDesc();
 }
