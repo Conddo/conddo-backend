@@ -491,6 +491,14 @@ a valid session — never touching a password.
   so modules stay decoupled.
 
 ### 7. Billing (PRD §14)
+**Spec**: [BILLING_TIERS_SPEC.md](./BILLING_TIERS_SPEC.md) — Launcher / Growth
+/ Scaler tier definitions, schema (subscription_plans, tenant_subscriptions,
+plan_features), endpoints (/billing/plans, /billing/subscription,
+/billing/upgrade, /billing/cancel), feature-gate middleware (PLAN_UPGRADE_REQUIRED
+403 + @RequiresFeature annotation), trial signup, renewal cron, and the
+RoutePay integration boundary. Includes a one-shot rename migration mapping
+the existing `starter`/`business`/`pro` plan IDs to `launcher`/`growth`/`scaler`.
+FE shipped 2026-06-05; this BE work unlocks real billing.
 - Paystack subscriptions; tiers; 14-day trial; failed-payment grace period.
 
 ### 7a. Payments — `conddo-payments` standalone web service  ⬜ TODO (P0 for V1 launch)
