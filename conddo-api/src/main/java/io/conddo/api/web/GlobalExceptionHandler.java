@@ -14,6 +14,7 @@ import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
 import io.conddo.api.publicapi.PublicSiteController;
 import io.conddo.core.service.PrescriptionService;
+import io.conddo.core.service.SocialMarketingService;
 import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.common.ApiError;
 import io.conddo.core.common.ApiResponse;
@@ -228,6 +229,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleInvalidSubmittedUrl(TenantSiteService.InvalidSubmittedUrlException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.fail(ApiError.of("INVALID_SUBMITTED_URL", ex.getMessage())));
+    }
+
+    /** Ayrshare env vars aren't wired in this deployment — clean 503 instead of a 500. */
+    @ExceptionHandler(SocialMarketingService.SocialUnconfiguredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSocialUnconfigured(SocialMarketingService.SocialUnconfiguredException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.fail(ApiError.of("SOCIAL_UNCONFIGURED", ex.getMessage())));
+    }
+
+    /** Ayrshare upstream rejected the call (returned no profileKey, no URL, etc.). */
+    @ExceptionHandler(SocialMarketingService.AyrshareUpstreamException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAyrshareUpstream(SocialMarketingService.AyrshareUpstreamException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.fail(ApiError.of("AYRSHARE_UPSTREAM", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)
