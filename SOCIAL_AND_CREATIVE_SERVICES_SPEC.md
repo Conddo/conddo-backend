@@ -21,12 +21,13 @@ designed assets each month.
 **Decision is made**. We integrate via [Ayrshare](https://www.ayrshare.com),
 which gives us a unified API across every channel we care about. **Our
 master API key is already in hand** — product holds it, BE just needs to
-drop it into **Render's `conddo-api` service** as `AYRSHARE_API_KEY` and
-start hitting the gateway. Only conddo-api needs the key; conddo-studio
-and conddo-payments are pulled into the creative-services flow indirectly
-(Studio receives the job, payments charges the tenant) but neither calls
-Ayrshare directly. No per-platform app review, no OAuth code paths to
-write, no provider-specific posting quirks for us to maintain.
+drop it into **Render's `conddo-backend` service** as `AYRSHARE_API_KEY`
+and start hitting the gateway. Only conddo-backend needs the key;
+conddo-studio and conddo-payments are pulled into the creative-services
+flow indirectly (Studio receives the job, payments charges the tenant)
+but neither calls Ayrshare directly. No per-platform app review, no OAuth
+code paths to write, no provider-specific posting quirks for us to
+maintain.
 
 ### What Ayrshare covers in one API
 
@@ -72,7 +73,7 @@ social-using tenants. Bake the ~$1-2/month/tenant marginal cost into
 Growth-plan gross margin — `social_scheduler` is already a Growth-gated
 feature, so Launcher tenants don't trigger the meter.
 
-### Env vars in Render (sync:false) — **all on the `conddo-api` service**
+### Env vars in Render (sync:false) — **all on the `conddo-backend` service**
 
 | Var | Source | Use |
 |---|---|---|
@@ -81,7 +82,7 @@ feature, so Launcher tenants don't trigger the meter.
 | `CONDDO_SOCIAL_TOKEN_KEY` | `openssl rand -hex 32` | Envelope key for at-rest encryption of each tenant's Ayrshare `profileKey` |
 
 All three are declared (with `sync: false`) in
-[`render.yaml`](./render.yaml) under the `conddo-api` service so the
+[`render.yaml`](./render.yaml) under the `conddo-backend` service so the
 shape is durable; only the values go into the Render dashboard. Not on
 `conddo-studio` or `conddo-payments` — they don't call Ayrshare.
 

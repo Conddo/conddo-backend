@@ -6,7 +6,7 @@
 #   - setting the JDBC URL + DB owner credentials (sync:false vars below).
 services:
   - type: web
-    name: conddo-api
+    name: conddo-backend          # live service: conddo-backend.onrender.com
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: starter            # JVM needs RAM; the free tier cold-starts and is tight
