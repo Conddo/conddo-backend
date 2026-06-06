@@ -1,15 +1,18 @@
 package io.conddo.api.web;
 
 import io.conddo.core.common.ApiResponse;
-import io.conddo.core.storage.StorageException;
 import io.conddo.core.service.MediaService;
 import io.conddo.core.service.MediaService.MediaView;
+import io.conddo.core.service.MediaService.Usage;
+import io.conddo.core.storage.StorageException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,21 +47,40 @@ public class MediaController {
     }
 
     /**
-     * Upload a file (multipart). {@code purpose} (logo|website|product|…) is
-     * optional; {@code kind} is accepted as an alias for back-compat.
+     * Upload a file (multipart). {@code purpose} ({@code logo}/{@code website}/
+     * {@code product}/…) is optional; {@code kind} is accepted as an alias
+     * for back-compat. {@code width}/{@code height} are optional client-side
+     * hints the social composer + creative services use to lay out
+     * thumbnails without re-decoding the file (SOCIAL_AND_CREATIVE_SERVICES_SPEC §4).
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize(WRITE)
     public ResponseEntity<ApiResponse<MediaView>> upload(@RequestParam("file") MultipartFile file,
                                                          @RequestParam(required = false) String purpose,
-                                                         @RequestParam(required = false) String kind) {
+                                                         @RequestParam(required = false) String kind,
+                                                         @RequestParam(required = false) Integer width,
+                                                         @RequestParam(required = false) Integer height,
+                                                         @AuthenticationPrincipal Jwt jwt) {
         try {
+            UUID uploaderId = jwt == null ? null : UUID.fromString(jwt.getSubject());
             MediaView view = mediaService.upload(file.getOriginalFilename(), file.getContentType(),
-                    file.getSize(), file.getInputStream(), purpose != null ? purpose : kind);
+                    file.getSize(), file.getInputStream(), purpose != null ? purpose : kind,
+                    width, height, uploaderId);
             return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(view));
         } catch (IOException ex) {
             throw new StorageException("Could not read the uploaded file", ex);
         }
+    }
+
+    /**
+     * Storage usage for the bound tenant — drives the FE's usage bar at the
+     * top of {@code /marketing/media} (SOCIAL_AND_CREATIVE_SERVICES_SPEC §4).
+     * {@code capBytes} is {@code -1} for Scaler-tier (unlimited).
+     */
+    @GetMapping("/usage")
+    @PreAuthorize(READ)
+    public ApiResponse<Usage> usage() {
+        return ApiResponse.ok(mediaService.usage());
     }
 
     @GetMapping

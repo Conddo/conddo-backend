@@ -1449,6 +1449,25 @@ class AuthFlowTest {
         mockMvc.perform(multipart("/api/v1/media").file(bad).header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isConflict());
 
+        // Phase 2a: videos are now accepted (the social composer needs them).
+        MockMultipartFile clip = new MockMultipartFile(
+                "file", "reel.mp4", "video/mp4", new byte[]{10, 20, 30, 40, 50, 60, 70});
+        mockMvc.perform(multipart("/api/v1/media").file(clip)
+                        .param("width", "1080").param("height", "1920")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.contentType").value("video/mp4"))
+                .andExpect(jsonPath("$.data.kind").value("video"))
+                .andExpect(jsonPath("$.data.width").value(1080))
+                .andExpect(jsonPath("$.data.height").value(1920))
+                .andExpect(jsonPath("$.data.uploadedBy").isNotEmpty());
+
+        // Phase 2a: /usage exposes the FE's usage bar input. Launcher = 500MB cap.
+        mockMvc.perform(get("/api/v1/media/usage").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.usedBytes").value(12))   // 5 + 7 bytes uploaded above
+                .andExpect(jsonPath("$.data.capBytes").value(500L * 1024 * 1024));
+
         // Tenant isolation: another tenant can't see or fetch it.
         String other = signupVerticalAndLogin("media-b", "owner@media-b.test", "fashion");
         mockMvc.perform(get("/api/v1/media").header(HttpHeaders.AUTHORIZATION, bearer(other)))

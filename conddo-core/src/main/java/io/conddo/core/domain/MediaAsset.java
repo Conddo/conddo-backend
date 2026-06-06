@@ -44,6 +44,16 @@ public class MediaAsset {
 
     private String kind;
 
+    /** Pixel width for images/videos — null for other content types. */
+    private Integer width;
+
+    /** Pixel height for images/videos — null for other content types. */
+    private Integer height;
+
+    /** The user who uploaded the asset (§4) — null for legacy rows pre-V28. */
+    @Column(name = "uploaded_by")
+    private UUID uploadedBy;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -53,6 +63,12 @@ public class MediaAsset {
 
     public MediaAsset(UUID tenantId, String storageKey, String url, String contentType, long sizeBytes,
                       String originalName, String kind) {
+        this(tenantId, storageKey, url, contentType, sizeBytes, originalName, kind, null, null, null);
+    }
+
+    /** Spec §4 constructor — includes dimensions + uploadedBy. */
+    public MediaAsset(UUID tenantId, String storageKey, String url, String contentType, long sizeBytes,
+                      String originalName, String kind, Integer width, Integer height, UUID uploadedBy) {
         this.tenantId = tenantId;
         this.storageKey = storageKey;
         this.url = url;
@@ -60,6 +76,9 @@ public class MediaAsset {
         this.sizeBytes = sizeBytes;
         this.originalName = originalName;
         this.kind = kind;
+        this.width = width;
+        this.height = height;
+        this.uploadedBy = uploadedBy;
     }
 
     public UUID getId() {
@@ -92,6 +111,18 @@ public class MediaAsset {
 
     public String getKind() {
         return kind;
+    }
+
+    public Integer getWidth() {
+        return width;
+    }
+
+    public Integer getHeight() {
+        return height;
+    }
+
+    public UUID getUploadedBy() {
+        return uploadedBy;
     }
 
     public OffsetDateTime getCreatedAt() {

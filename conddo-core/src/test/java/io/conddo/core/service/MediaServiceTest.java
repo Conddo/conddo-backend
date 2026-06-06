@@ -37,8 +37,16 @@ class MediaServiceTest {
     private final MediaAssetRepository repository = mock(MediaAssetRepository.class);
     private final ObjectStorage storage = mock(ObjectStorage.class);
     private final TenantSession tenantSession = mock(TenantSession.class);
-    private final MediaService service =
-            new MediaService(repository, storage, tenantSession, 10L * 1024 * 1024);
+    private final BillingService billingService = mock(BillingService.class);
+    private final MediaService service = newService();
+
+    private MediaService newService() {
+        // Stub the storage cap to unlimited (Integer.MAX_VALUE) so the
+        // existing assertions stay focused on validation + storage roundtrip;
+        // a dedicated test would override this for cap behaviour.
+        when(billingService.featureLimit(any(), eq("media_storage_mb"))).thenReturn(Integer.MAX_VALUE);
+        return new MediaService(repository, storage, tenantSession, billingService, 10L * 1024 * 1024);
+    }
 
     @AfterEach
     void clear() {

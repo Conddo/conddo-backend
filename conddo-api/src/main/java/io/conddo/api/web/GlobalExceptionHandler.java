@@ -13,6 +13,7 @@ import io.conddo.core.auth.RegistrationNotFoundException;
 import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
 import io.conddo.api.publicapi.PublicSiteController;
+import io.conddo.core.service.MediaService;
 import io.conddo.core.service.PrescriptionService;
 import io.conddo.core.service.SocialMarketingService;
 import io.conddo.core.service.TenantSiteService;
@@ -243,6 +244,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAyrshareUpstream(SocialMarketingService.AyrshareUpstreamException ex) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(ApiResponse.fail(ApiError.of("AYRSHARE_UPSTREAM", ex.getMessage())));
+    }
+
+    /** Plan-tier media-storage cap hit (Phase 2a) — 413 with an explicit code. */
+    @ExceptionHandler(MediaService.MediaStorageCapException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaStorageCap(MediaService.MediaStorageCapException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiResponse.fail(ApiError.of("MEDIA_STORAGE_CAP", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)
