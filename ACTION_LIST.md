@@ -505,9 +505,14 @@ Pinterest, GMB, Threads, Bluesky, Telegram, Reddit. No per-platform app
 review on our side — we ride on Ayrshare's approved app status.
 
 **Master API key is already in hand** — ask product (David). The BE team
-just needs to drop it into Render as `AYRSHARE_API_KEY` and start hitting
-`https://api.ayrshare.com/api/*`. No Meta or LinkedIn developer app to
-register on our side, no OAuth code paths to write.
+just needs to drop it into Render's **`conddo-api` service** as
+`AYRSHARE_API_KEY` and start hitting `https://api.ayrshare.com/api/*`.
+All three Ayrshare-related vars (`AYRSHARE_API_KEY`,
+`AYRSHARE_WEBHOOK_SECRET`, `CONDDO_SOCIAL_TOKEN_KEY`) belong on conddo-api
+— the shape is declared in [render.yaml](./render.yaml) under that
+service. Not on conddo-studio or conddo-payments; neither calls Ayrshare.
+No Meta or LinkedIn developer app to register on our side, no OAuth code
+paths to write.
 
 **Phase 1 BE work for this sprint** (the explicit handoff):
 1. Set `AYRSHARE_API_KEY` in Render (sync:false). Get the value from

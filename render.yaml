@@ -58,6 +58,23 @@ services:
       # the Cloudinary dashboard. Unset = uploads return 502 until configured.
       - key: CLOUDINARY_URL
         sync: false
+      # --- Social integrations (Ayrshare gateway, §7b) ---
+      # Master API key for the Ayrshare account. Tenant posts go out as
+      # POST https://api.ayrshare.com/api/post with this in the Authorization
+      # header. Already provisioned — ask product for the value.
+      # Spec: SOCIAL_AND_CREATIVE_SERVICES_SPEC.md §1.
+      - key: AYRSHARE_API_KEY
+        sync: false
+      # HMAC secret for inbound webhooks from Ayrshare. Generate in Ayrshare's
+      # dashboard; configure their webhook URL to point at
+      # https://api.conddo.io/webhooks/ayrshare.
+      - key: AYRSHARE_WEBHOOK_SECRET
+        sync: false
+      # 32-byte envelope key for at-rest encryption of each tenant's Ayrshare
+      # profileKey (stored in tenant_social_profile.ayrshare_profile_key).
+      # Generate once: openssl rand -hex 32
+      - key: CONDDO_SOCIAL_TOKEN_KEY
+        sync: false
       # Conddo Studio hand-off (SERVICE_TOPOLOGY.md §4). Optional: if STUDIO_BASE_URL
       # is unset, an owner website change-request is recorded PENDING (no Studio job).
       # The service token is shared with the studio service (kept in sync below).
