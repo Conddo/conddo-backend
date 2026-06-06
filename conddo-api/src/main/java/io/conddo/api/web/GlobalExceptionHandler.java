@@ -13,6 +13,7 @@ import io.conddo.core.auth.RegistrationNotFoundException;
 import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
 import io.conddo.api.publicapi.PublicSiteController;
+import io.conddo.core.service.CreativeServiceService;
 import io.conddo.core.service.MediaService;
 import io.conddo.core.service.PrescriptionService;
 import io.conddo.core.service.SocialMarketingService;
@@ -251,6 +252,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMediaStorageCap(MediaService.MediaStorageCapException ex) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(ApiResponse.fail(ApiError.of("MEDIA_STORAGE_CAP", ex.getMessage())));
+    }
+
+    /** conddo-payments is unreachable when a creative-service request was being created — 503. */
+    @ExceptionHandler(CreativeServiceService.PaymentsUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePaymentsUnavailable(CreativeServiceService.PaymentsUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.fail(ApiError.of("PAYMENTS_UNAVAILABLE", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)

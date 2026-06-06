@@ -58,6 +58,9 @@ public class SecurityConfig {
                         // Service-to-service callback from conddo-payments. The controller
                         // verifies X-Payments-Service-Token itself; no JWT is forwarded.
                         .requestMatchers(HttpMethod.POST, "/api/v1/internal/payments/notify").permitAll()
+                        // Service-to-service callback from conddo-studio when a creative
+                        // service request is delivered. Verifies X-Studio-Service-Token.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/internal/creative-services/*/delivered").permitAll()
                         // Ayrshare webhook — the controller verifies HMAC-SHA256
                         // over the raw body; no JWT is forwarded.
                         .requestMatchers(HttpMethod.POST, "/webhooks/ayrshare").permitAll()

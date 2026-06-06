@@ -37,6 +37,18 @@ public interface PaymentsGateway {
                                                    String customerEmail, String customerName,
                                                    long amountKobo, String description, String returnUrl);
 
+    /**
+     * Initialise a creative-service charge (SOCIAL_AND_CREATIVE_SERVICES_SPEC §5).
+     * Same shape as the booking deposit but charged directly to the merchant
+     * (not their customer) — payment lands in our master account, not the
+     * tenant's RoutePay sub-account. Empty result keeps the request in
+     * {@code pending_payment} so the FE can re-fetch a fresh URL.
+     */
+    Optional<PaymentInitResult> initCreativeServiceCharge(UUID tenantId, String tenantSlug,
+                                                          UUID requestId, UUID userId,
+                                                          String userEmail, String userName,
+                                                          long amountKobo, String description, String returnUrl);
+
     /** Minimal handle to a provisioned tenant account, returned across the seam. */
     record TenantPaymentsAccount(UUID tenantId, String subaccountId, String status) {
     }
