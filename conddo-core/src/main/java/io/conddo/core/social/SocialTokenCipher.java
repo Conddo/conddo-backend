@@ -39,17 +39,34 @@ public class SocialTokenCipher {
     private final SecretKey key;
     private final SecureRandom random = new SecureRandom();
 
-    public SocialTokenCipher(@Value("${conddo.social.token-key:}") String base64Key) {
-        if (base64Key == null || base64Key.isBlank()) {
+    public SocialTokenCipher(@Value("${conddo.social.token-key:}") String envKey) {
+        if (envKey == null || envKey.isBlank()) {
             this.key = null;
             return;
         }
-        byte[] raw = Base64.getDecoder().decode(base64Key.trim());
+        // Ops generate this with either `openssl rand -base64 32` (44 chars,
+        // ends with `=`) or `openssl rand -hex 32` (64 chars, [0-9a-f] only).
+        // Both produce 32 bytes — accept either format so the deploy doesn't
+        // hinge on remembering which flag was used.
+        byte[] raw = decodeKey(envKey.trim());
         if (raw.length != 32) {
             throw new IllegalStateException(
-                    "conddo.social.token-key must decode to 32 bytes (AES-256); got " + raw.length);
+                    "conddo.social.token-key must decode to 32 bytes (AES-256); got " + raw.length
+                            + " — generate with `openssl rand -base64 32` or `openssl rand -hex 32`.");
         }
         this.key = new SecretKeySpec(raw, ALGORITHM);
+    }
+
+    /** Try hex first (unambiguous 64-char [0-9a-f] pattern), then base64. */
+    private static byte[] decodeKey(String raw) {
+        if (raw.length() == 64 && raw.matches("[0-9a-fA-F]+")) {
+            try {
+                return java.util.HexFormat.of().parseHex(raw);
+            } catch (IllegalArgumentException ignored) {
+                // fall through to base64
+            }
+        }
+        return Base64.getDecoder().decode(raw);
     }
 
     public boolean isConfigured() {
