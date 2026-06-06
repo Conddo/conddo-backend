@@ -1136,6 +1136,58 @@ after.
 |🆕| POST | `/api/v1/prescriptions/{id}/fill` | Stamp `last_filled_at = now()`, recompute `next_refill_due`. |
 |🆕| POST | `/api/v1/prescriptions/{id}/remind` | Send SMS refill reminder (reuses `SmsSender` per OrderService.remind pattern). |
 
+### 11.13c Pharmacy customer-website integration ⬜ TODO (pharmacy vertical, P0 for Seb&Bayor)
+**Spec**: [PHARMACY_PUBLIC_API_SPEC.md](./PHARMACY_PUBLIC_API_SPEC.md) — the
+full surface the tenant's customer-facing website (e.g.
+`sebandbayor.com.ng`) calls. **Two distinct API surfaces**:
+
+1. **Public API** `/api/v1/public/{slug}/pharmacy/*` — Site-API-Key auth,
+   plus customer JWT for shopping. 11 sections: store info, customer
+   auth/register/login, products catalog + categories, cart, orders
+   (place + history + detail), prescriptions (customer uploads),
+   addresses, consultations, articles/blog, file upload, delivery fees.
+   This rides on the `tenant_sites` infra in
+   [WEBSITE_INTEGRATION_SPEC.md](./WEBSITE_INTEGRATION_SPEC.md).
+2. **Dashboard API** `/api/v1/dashboard/{slug}/pharmacy/*` — JWT-auth
+   (could also be served at `/api/v1/pharmacy/*` since JWT carries the
+   tenant). What the Conddo dashboard (conddo-app) consumes: products
+   CRUD, categories CRUD, order management, **prescription review queue**
+   (approve / reject customer uploads), **consultations queue**, customer
+   list + **health profiles**, articles CRUD, analytics summary,
+   manual order entry (walk-in), payment-link generation.
+
+**Wire-shape decision needed** between BE + the existing FE:
+- `/api/v1/inventory/products` (live, generic) vs new
+  `/dashboard/{slug}/pharmacy/products` (per this spec, pharmacy-flavoured
+  with NAFDAC, indications, dosage, warnings, storage, requiresPrescription).
+  Pick one. Recommendation: **extend the existing endpoint with the
+  pharmacy-specific fields as nullable columns** rather than fork a new
+  URL space — keeps the manifest / sidebar / FE simple.
+- Existing `/api/v1/prescriptions` is the **internal dispensing log**
+  (pharmacist records what they dispense, with refill cadence). This
+  spec's `/dashboard/{slug}/pharmacy/prescriptions` is the
+  **customer-uploaded review queue** (different entity). Both should
+  exist. Suggested FE pattern: keep the existing /prescriptions page,
+  add a new "Review queue" tab or `/prescriptions/review` sub-page that
+  consumes the new endpoint.
+
+**Implementation order suggestion**:
+- Phase 1 (this sprint, Seb&Bayor go-live): public Sections 1, 3, 4, 5
+  (store-info, products, cart, orders) + Section 6 (customer prescription
+  uploads) + Dashboard prescription review + consultations + manual order.
+- Phase 2: Customer auth (register / login / forgot-password), addresses,
+  articles, health profiles.
+- Phase 3: Refill-reminder scheduled job (already partially specced in
+  PHARMACY_DEEP_DIVE_SPEC.md §A Phase 2 — extend to cover medication
+  recognition from purchase history).
+
+**Manifest entries needed** (when the BE ships the endpoints):
+- `consultations` toolId on pharmacy vertical → `Consultations` sidebar
+  section at `/consultations` (icon: stethoscope or message-circle).
+- `prescriptions.review` toolId optional — review-queue lives under the
+  existing `/prescriptions` page as a tab, so no separate sidebar entry
+  needed unless product wants prominence.
+
 ### 11.7 Payments  — `/payments` ✅
 **Functionality:** KPI cards (this month / outstanding / paid invoices / overdue);
 filter (All/Received/Outstanding/Overdue) + date range; transactions table; create
