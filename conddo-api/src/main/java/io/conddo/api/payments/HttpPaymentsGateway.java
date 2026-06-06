@@ -200,6 +200,52 @@ public class HttpPaymentsGateway implements PaymentsGateway {
         }
     }
 
+    @Override
+    public Optional<PaymentInitResult> initBrandPackageCharge(UUID tenantId, String tenantSlug,
+                                                              UUID subscriptionId, UUID userId,
+                                                              String userEmail, String userName,
+                                                              long amountKobo, String description,
+                                                              String returnUrl) {
+        if (!enabled) {
+            return Optional.empty();
+        }
+        try {
+            java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("tenantId", tenantId);
+            body.put("tenantSlug", tenantSlug);
+            body.put("brandPackageSubscriptionId", subscriptionId);
+            body.put("customerId", userId);
+            body.put("customerEmail", userEmail);
+            body.put("customerName", userName);
+            body.put("description", description);
+            body.put("amountKobo", amountKobo);
+            body.put("returnUrl", returnUrl);
+
+            JsonNode response = restClient.post()
+                    .uri("/api/payments/internal/charges")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            JsonNode data = response == null ? null : response.path("data");
+            if (data == null || data.isMissingNode() || data.isNull()) {
+                log.warn("Payments init returned no data for brand-package subscription {}", subscriptionId);
+                return Optional.empty();
+            }
+            String url = data.path("paymentUrl").asText(null);
+            if (url == null || url.isBlank()) {
+                log.warn("Payments init returned no paymentUrl for brand-package subscription {}", subscriptionId);
+                return Optional.empty();
+            }
+            return Optional.of(new PaymentInitResult(
+                    data.path("reference").asText(null), url, data.path("status").asText(null)));
+        } catch (RuntimeException ex) {
+            log.error("Payments init failed for brand-package subscription {}: {}", subscriptionId, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
     private static ClientHttpRequestFactory defaultTimeoutFactory() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());

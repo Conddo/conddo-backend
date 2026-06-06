@@ -2,6 +2,7 @@ package io.conddo.api.payments;
 
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.service.BookingService;
+import io.conddo.core.service.BrandPackageService;
 import io.conddo.core.service.CreativeServiceService;
 import io.conddo.core.tenant.TenantContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,13 +44,16 @@ public class InternalPaymentsCallbackController {
 
     private final BookingService bookingService;
     private final CreativeServiceService creativeServiceService;
+    private final BrandPackageService brandPackageService;
     private final String serviceToken;
 
     public InternalPaymentsCallbackController(BookingService bookingService,
                                               CreativeServiceService creativeServiceService,
+                                              BrandPackageService brandPackageService,
                                               @Value("${payments.service-token:}") String serviceToken) {
         this.bookingService = bookingService;
         this.creativeServiceService = creativeServiceService;
+        this.brandPackageService = brandPackageService;
         this.serviceToken = serviceToken == null ? "" : serviceToken;
     }
 
@@ -65,13 +69,30 @@ public class InternalPaymentsCallbackController {
                             "Missing or invalid " + SERVICE_TOKEN_HEADER)));
         }
 
-        // Creative-service requests don't have a tenant-scoped row to bind
-        // against on this side — CreativeServiceService binds inside the
-        // public_resolver carve-out itself. Booking/order paths still need
-        // TenantContext set for RLS.
+        // Platform-charge routing (creative-service + brand-package): the
+        // service-side handler binds inside the public_resolver carve-out
+        // itself. We dispatch by which target id is set on the notify body.
         if ("PAID".equalsIgnoreCase(body.status()) && body.paymentReference() != null
                 && !body.paymentReference().isBlank()
-                && (body.creativeRequestId() != null || body.bookingId() == null && body.orderId() == null)) {
+                && body.brandPackageSubscriptionId() != null) {
+            try {
+                brandPackageService.handlePaymentPaid(body.paymentReference());
+                log.info("Brand-package subscription marked paid (ref {}, payment {})",
+                        body.paymentReference(), body.paymentId());
+                return ResponseEntity.ok(ApiResponse.ok(Map.of(
+                        "received", true,
+                        "paymentId", body.paymentId(),
+                        "status", body.status())));
+            } catch (RuntimeException ex) {
+                log.error("Brand-package paid handler failed for ref {}: {}",
+                        body.paymentReference(), ex.getMessage());
+                return ResponseEntity.ok(ApiResponse.ok(Map.of("received", false, "error", ex.getMessage())));
+            }
+        }
+        if ("PAID".equalsIgnoreCase(body.status()) && body.paymentReference() != null
+                && !body.paymentReference().isBlank()
+                && (body.creativeRequestId() != null
+                    || body.bookingId() == null && body.orderId() == null)) {
             try {
                 creativeServiceService.handlePaymentPaid(body.paymentReference());
                 log.info("Creative-service request marked paid (ref {}, payment {})",
@@ -125,6 +146,7 @@ public class InternalPaymentsCallbackController {
                                        UUID orderId,
                                        UUID bookingId,
                                        UUID creativeRequestId,
+                                       UUID brandPackageSubscriptionId,
                                        String paymentReference,
                                        long amountKobo) {
     }

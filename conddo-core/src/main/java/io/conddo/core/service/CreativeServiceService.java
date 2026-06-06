@@ -66,6 +66,7 @@ public class CreativeServiceService {
     private final SocialPostRepository socialPostRepository;
     private final PaymentsGateway paymentsGateway;
     private final StudioJobGateway studioJobGateway;
+    private final BrandPackageService brandPackageService;
     private final TenantSession tenantSession;
     private final Clock clock;
     private final String appBaseUrl;
@@ -80,6 +81,7 @@ public class CreativeServiceService {
                                   SocialPostRepository socialPostRepository,
                                   PaymentsGateway paymentsGateway,
                                   StudioJobGateway studioJobGateway,
+                                  BrandPackageService brandPackageService,
                                   TenantSession tenantSession,
                                   Clock clock,
                                   @Value("${conddo.app.base-url:https://app.conddo.io}") String appBaseUrl) {
@@ -90,6 +92,7 @@ public class CreativeServiceService {
         this.socialPostRepository = socialPostRepository;
         this.paymentsGateway = paymentsGateway;
         this.studioJobGateway = studioJobGateway;
+        this.brandPackageService = brandPackageService;
         this.tenantSession = tenantSession;
         this.clock = clock;
         this.appBaseUrl = appBaseUrl;
@@ -124,14 +127,34 @@ public class CreativeServiceService {
                 .filter(CreativeServiceOffering::isActive)
                 .orElseThrow(() -> new NotFoundException("Unknown creative-service offering: " + offeringCode));
 
+        // SOCIAL_AND_CREATIVE_SERVICES_SPEC §6: active brand-package subscribers
+        // ride on their bundle for as long as quota lasts. checkAndConsume()
+        // returns true on a successful consume (price_kobo=0, no payment),
+        // false when there's no subscription or this code isn't bundled,
+        // and throws QuotaExhaustedException when included but used up
+        // (controller maps to 409 — caller decides between waiting and
+        // paying per-job, no automatic fallback).
+        boolean bundleConsumed = brandPackageService.checkAndConsume(offering.getCode());
+
+        int priceKobo = bundleConsumed ? 0 : offering.getPriceKobo();
         CreativeServiceRequest request = new CreativeServiceRequest(
                 TenantContext.require(), userId, offering.getId(), socialPostId,
-                brief.trim(), attachedMedia, offering.getPriceKobo());
+                brief.trim(), attachedMedia, priceKobo);
         request = requestRepository.save(request);
 
-        // Hand off to the payments gateway — the FE redirects the tenant to
-        // checkoutUrl, and on success the conddo-payments webhook fires our
-        // internal endpoint with the reference, where handlePaymentPaid picks it up.
+        if (bundleConsumed) {
+            // Bundle ride: skip the payment step entirely; the Studio hand-off
+            // mirrors the post-paid path so the operations team has nothing
+            // new to learn.
+            request.markPaid(null);   // status: pending_payment → queued
+            queueStudioJob(request, offering);
+            request = requestRepository.save(request);
+            return new CreateResult(request, offering, null);
+        }
+
+        // Per-job paid path: hand off to the payments gateway and return the
+        // checkout URL. The conddo-payments webhook fires our internal
+        // endpoint with the reference, where handlePaymentPaid picks it up.
         String checkoutUrl = initCheckout(request, offering)
                 .orElseThrow(() -> new PaymentsUnavailableException(
                         "Payments service is unreachable — please retry in a moment."));
@@ -180,18 +203,25 @@ public class CreativeServiceService {
         tenantSession.bind();
 
         request.markPaid(paymentReference);
-        // Hand off to Studio — fire-and-forget at the gateway level (returns
-        // empty when the service is dormant). A later reconciliation can
-        // re-run this branch on rows in queued without studio_job_id set.
         CreativeServiceOffering offering = offeringRepository.findById(request.getOfferingId())
                 .orElse(null);
         if (offering != null) {
-            Map<String, Object> brief = buildStudioBrief(request, offering);
-            String title = offering.getName() + " — " + tenantNameFor(request.getTenantId());
-            studioJobGateway.createJob(request.getTenantId(), offering.getJobType(), title, brief)
-                    .ifPresent(ref -> request.markQueued(ref.jobId(), ref.jobNumber()));
+            queueStudioJob(request, offering);
         }
         requestRepository.save(request);
+    }
+
+    /**
+     * Hand off to Studio — fire-and-forget at the gateway level (returns
+     * empty when the service is dormant). A later reconciliation can re-run
+     * this branch on rows queued without studio_job_id set. Used by both
+     * the per-job paid path and the bundle-consumed path.
+     */
+    private void queueStudioJob(CreativeServiceRequest request, CreativeServiceOffering offering) {
+        Map<String, Object> brief = buildStudioBrief(request, offering);
+        String title = offering.getName() + " — " + tenantNameFor(request.getTenantId());
+        studioJobGateway.createJob(request.getTenantId(), offering.getJobType(), title, brief)
+                .ifPresent(ref -> request.markQueued(ref.jobId(), ref.jobNumber()));
     }
 
     // ----- internal: delivered ----------------------------------------------

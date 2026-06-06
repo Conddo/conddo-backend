@@ -49,6 +49,16 @@ public interface PaymentsGateway {
                                                           String userEmail, String userName,
                                                           long amountKobo, String description, String returnUrl);
 
+    /**
+     * Initialise a brand-package charge (SOCIAL_AND_CREATIVE_SERVICES_SPEC §6).
+     * Routes to the platform account (kind=BRAND_PACKAGE in conddo-payments V2).
+     * Used both for the initial subscription charge and recurring renewals.
+     */
+    Optional<PaymentInitResult> initBrandPackageCharge(UUID tenantId, String tenantSlug,
+                                                       UUID subscriptionId, UUID userId,
+                                                       String userEmail, String userName,
+                                                       long amountKobo, String description, String returnUrl);
+
     /** Minimal handle to a provisioned tenant account, returned across the seam. */
     record TenantPaymentsAccount(UUID tenantId, String subaccountId, String status) {
     }

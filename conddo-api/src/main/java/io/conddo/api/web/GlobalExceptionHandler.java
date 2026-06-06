@@ -13,6 +13,7 @@ import io.conddo.core.auth.RegistrationNotFoundException;
 import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
 import io.conddo.api.publicapi.PublicSiteController;
+import io.conddo.core.service.BrandPackageService;
 import io.conddo.core.service.CreativeServiceService;
 import io.conddo.core.service.MediaService;
 import io.conddo.core.service.PrescriptionService;
@@ -259,6 +260,36 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handlePaymentsUnavailable(CreativeServiceService.PaymentsUnavailableException ex) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ApiResponse.fail(ApiError.of("PAYMENTS_UNAVAILABLE", ex.getMessage())));
+    }
+
+    /** Same shape for the brand-package subscribe path (Phase 3). */
+    @ExceptionHandler(BrandPackageService.PaymentsUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBrandPackagePaymentsUnavailable(BrandPackageService.PaymentsUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.fail(ApiError.of("PAYMENTS_UNAVAILABLE", ex.getMessage())));
+    }
+
+    /** Tenant already has a live brand-package subscription (Phase 3) — 409. */
+    @ExceptionHandler(BrandPackageService.AlreadySubscribedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAlreadySubscribed(BrandPackageService.AlreadySubscribedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("ALREADY_SUBSCRIBED", ex.getMessage())));
+    }
+
+    /**
+     * Bundle ride attempted but the quota for that creative-service code is
+     * used up (Phase 3). 409 with the offering code + quota so the FE can
+     * render "you've used your 4/4 designs this month" precisely.
+     */
+    @ExceptionHandler(BrandPackageService.QuotaExhaustedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleQuotaExhausted(BrandPackageService.QuotaExhaustedException ex) {
+        java.util.LinkedHashMap<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("offeringCode", ex.getOfferingCode());
+        details.put("quota", ex.getQuota());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("QUOTA_EXHAUSTED", ex.getMessage(),
+                        java.util.List.of(new ApiError.FieldError("offeringCode",
+                                "used " + ex.getQuota() + "/" + ex.getQuota())))));
     }
 
     @ExceptionHandler(Exception.class)
