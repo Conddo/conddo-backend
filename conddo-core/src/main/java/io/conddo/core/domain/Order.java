@@ -67,6 +67,28 @@ public class Order {
     @Column(name = "measurements")
     private Map<String, Object> measurements;
 
+    // ----- pharmacy public-order fields (V33) --------------------------------
+
+    @Column(name = "address_id")
+    private UUID addressId;
+
+    /** Snapshot of the address at order time so deleting the saved row doesn't break history. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "address_snapshot")
+    private Map<String, Object> addressSnapshot;
+
+    @Column(name = "delivery_fee_kobo", nullable = false)
+    private int deliveryFeeKobo = 0;
+
+    @Column(name = "payment_status", nullable = false)
+    private String paymentStatus = "PENDING";
+
+    @Column(name = "payment_link")
+    private String paymentLink;
+
+    @Column(name = "prescription_id")
+    private UUID prescriptionId;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -172,6 +194,55 @@ public class Order {
 
     public void setMeasurements(Map<String, Object> measurements) {
         this.measurements = measurements;
+    }
+
+    // ----- pharmacy public-order accessors (V33) -----------------------------
+
+    public UUID getAddressId() {
+        return addressId;
+    }
+
+    public Map<String, Object> getAddressSnapshot() {
+        return addressSnapshot;
+    }
+
+    public int getDeliveryFeeKobo() {
+        return deliveryFeeKobo;
+    }
+
+    public String getPaymentStatus() {
+        return paymentStatus;
+    }
+
+    public String getPaymentLink() {
+        return paymentLink;
+    }
+
+    public UUID getPrescriptionId() {
+        return prescriptionId;
+    }
+
+    public void setAddress(UUID addressId, Map<String, Object> snapshot) {
+        this.addressId = addressId;
+        this.addressSnapshot = snapshot;
+    }
+
+    public void setDeliveryFeeKobo(int deliveryFeeKobo) {
+        this.deliveryFeeKobo = Math.max(0, deliveryFeeKobo);
+    }
+
+    public void setPaymentStatus(String paymentStatus) {
+        if (paymentStatus != null && !paymentStatus.isBlank()) {
+            this.paymentStatus = paymentStatus;
+        }
+    }
+
+    public void setPaymentLink(String paymentLink) {
+        this.paymentLink = paymentLink;
+    }
+
+    public void setPrescriptionId(UUID prescriptionId) {
+        this.prescriptionId = prescriptionId;
     }
 
     public void setCustomer(UUID customerId, String customerName) {

@@ -94,95 +94,11 @@ public class PublicSiteController {
     // shape (slug, brand, indications, requiresPrescription, ...)
     // with the spec's pagination + filter contract.
 
-    /**
-     * Public order intake (WEBSITE_INTEGRATION_SPEC §3 stock-race). Per line:
-     * <ol>
-     *   <li>SELECT … FOR UPDATE on the product (pessimistic lock).</li>
-     *   <li>Re-verify {@code stock >= requested} after the lock.</li>
-     *   <li>On any shortage, throw — Spring rolls back the whole transaction.</li>
-     *   <li>Decrement stock + persist the Order via {@link OrderService}.</li>
-     * </ol>
-     * Returns 409 {@code STOCK_SHORTAGE} with a per-line breakdown.
-     */
-    @PostMapping("/pharmacy/orders")
-    @Transactional
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createOrder(
-            @PathVariable String slug,
-            @Valid @RequestBody PublicOrderRequest request) {
-
-        if (!billingService.hasFeature(TenantContext.require(), "order_management")) {
-            throw new ModuleNotEnabled("Online orders aren't enabled on the merchant's plan.");
-        }
-        tenantSession.bind();
-
-        List<Map<String, Object>> shortages = new ArrayList<>();
-        BigDecimal total = BigDecimal.ZERO;
-        List<OrderService.NewItem> orderItems = new ArrayList<>();
-        for (PublicOrderRequest.Item line : request.items()) {
-            Product p = entityManager.find(Product.class, line.productId(), LockModeType.PESSIMISTIC_WRITE);
-            if (p == null) {
-                shortages.add(Map.of(
-                        "productId", line.productId(),
-                        "available", 0,
-                        "requested", line.quantity()));
-                continue;
-            }
-            if (p.getStock() < line.quantity()) {
-                shortages.add(Map.of(
-                        "productId", line.productId(),
-                        "available", p.getStock(),
-                        "requested", line.quantity()));
-                continue;
-            }
-            p.adjustStock(-line.quantity());
-            productRepository.save(p);
-            BigDecimal lineTotal = p.getPrice().multiply(BigDecimal.valueOf(line.quantity()));
-            total = total.add(lineTotal);
-            orderItems.add(new OrderService.NewItem(p.getName(), line.quantity(), p.getPrice()));
-        }
-        if (!shortages.isEmpty()) {
-            // Spring rolls back the @Transactional method on RuntimeException —
-            // every stock decrement above is undone.
-            throw new StockShortage(shortages);
-        }
-
-        // Public intake creates a fresh Customer row each time. Matching on
-        // email/phone is a Phase 2 concern (dedup needs the merchant's call).
-        Customer customer = customerRepository.save(new Customer(
-                TenantContext.require(),
-                request.customer().fullName(),
-                request.customer().email(),
-                request.customer().phone(),
-                request.customer().notes()));
-
-        Order created = orderService.create(
-                customer.getId(),
-                customer.getFullName(),
-                "Online order",
-                "Received",
-                total,
-                LocalDate.now(),
-                orderItems,
-                new LinkedHashMap<>(),   // no measurements on a pharmacy order
-                request.deliveryAddress() == null ? null : "Delivery: " + request.deliveryAddress());
-
-        // Fire the notification fan-out (bell feed + email + SMS). Published
-        // before the @Transactional method returns so Spring promotes it to
-        // AFTER_COMMIT — a rolled-back order never notifies.
-        events.publishEvent(new OrderCreatedEvent(
-                TenantContext.require(),
-                created.getId(),
-                created.getReference(),
-                customer.getFullName(),
-                total,
-                OrderCreatedEvent.Source.PUBLIC_WEBSITE));
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("id", created.getId());
-        body.put("status", "Received");
-        body.put("total", total);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
-    }
+    // Phase-1 POST /pharmacy/orders is superseded by the customer-JWT-scoped
+    // checkout flow in PublicCustomerOrderController (V33). The new endpoint
+    // requires a logged-in customer, pulls address + prescription gating,
+    // and calculates delivery fee from the saved address. The Phase-1
+    // anonymous-buyer model didn't survive contact with the spec.
 
     // ----- error path mappings (handled by GlobalExceptionHandler) -----------
 

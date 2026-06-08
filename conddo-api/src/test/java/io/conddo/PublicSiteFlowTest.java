@@ -206,89 +206,27 @@ class PublicSiteFlowTest {
         // intentionally empty — see PharmacyPublicCatalogFlowTest
     }
 
+    /**
+     * Phase-1 anonymous-buyer {@code POST /pharmacy/orders} is gone — V33
+     * replaced it with the customer-JWT-scoped checkout flow. Stock-race
+     * + 409 → 400 OUT_OF_STOCK semantics, module gating, and notify-on-
+     * commit are all re-asserted against the new endpoint in
+     * {@code PharmacyPublicOrderFlowTest}. Empty no-ops preserve this
+     * file's narrative arc (site auth, regen, claim, admin approval).
+     */
     @Test
-    void orderIntakeReturns409StockShortageWhenStockInsufficient() throws Exception {
-        String tenantId = signup("ph-stock", "owner@ph-stock.test");
-        String token = login("ph-stock", "owner@ph-stock.test");
-        String key = regenerateKey(token);
-        activateSite(tenantId, "ph-stock");
-        upgradeToGrowth(tenantId);
-        String pid = seedProduct(tenantId, "VitaminC", "VC-001", "500.00", 1, 0, "200");
-
-        // Ordering 2 of a stock-of-1 product → 409 with the spec body shape.
-        mockMvc.perform(post("/api/v1/public/ph-stock/pharmacy/orders")
-                        .header("X-Conddo-Site-Key", key)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "items", List.of(Map.of("productId", pid, "quantity", 2)),
-                                "customer", Map.of(
-                                        "fullName", "Walk-in Buyer",
-                                        "phone", "0809000111")))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("STOCK_SHORTAGE"))
-                .andExpect(jsonPath("$.items[0].productId").value(pid))
-                .andExpect(jsonPath("$.items[0].available").value(1))
-                .andExpect(jsonPath("$.items[0].requested").value(2));
-
-        // Stock must be unchanged after the rollback.
-        assertEquals(1, readStock(pid), "shortage must roll back stock decrements");
+    void orderIntakeReturns409StockShortageWhenStockInsufficient_supersededByV33() {
+        // moved to PharmacyPublicOrderFlowTest.checkoutShortageRollsBackStockAndReturns400
     }
 
     @Test
-    void successfulOrderDecrementsStockAndTheNextRequestSeesTheNewLevel() throws Exception {
-        String tenantId = signup("ph-buy", "owner@ph-buy.test");
-        String token = login("ph-buy", "owner@ph-buy.test");
-        String key = regenerateKey(token);
-        activateSite(tenantId, "ph-buy");
-        upgradeToGrowth(tenantId);
-        String pid = seedProduct(tenantId, "Paracetamol", "PCM-001", "300.00", 1, 0, "100");
-
-        mockMvc.perform(post("/api/v1/public/ph-buy/pharmacy/orders")
-                        .header("X-Conddo-Site-Key", key)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "items", List.of(Map.of("productId", pid, "quantity", 1)),
-                                "customer", Map.of(
-                                        "fullName", "Buyer One",
-                                        "phone", "0809000222")))))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.id").isNotEmpty())
-                .andExpect(jsonPath("$.data.total").value(300.00));
-
-        assertEquals(0, readStock(pid), "successful order must persist the stock decrement");
-
-        // Second order for the same product → 409 because the row is now empty.
-        mockMvc.perform(post("/api/v1/public/ph-buy/pharmacy/orders")
-                        .header("X-Conddo-Site-Key", key)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "items", List.of(Map.of("productId", pid, "quantity", 1)),
-                                "customer", Map.of(
-                                        "fullName", "Buyer Two",
-                                        "phone", "0809000333")))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("STOCK_SHORTAGE"));
+    void successfulOrderDecrementsStockAndTheNextRequestSeesTheNewLevel_supersededByV33() {
+        // moved to PharmacyPublicOrderFlowTest.checkoutSucceedsDecrementsStockClearsCart
     }
 
     @Test
-    void moduleGateBlocksLauncherTenantsFromOrderIntake() throws Exception {
-        String tenantId = signup("ph-gate", "owner@ph-gate.test");
-        String token = login("ph-gate", "owner@ph-gate.test");
-        String key = regenerateKey(token);
-        activateSite(tenantId, "ph-gate");
-        // No upgrade — stays on the launcher plan, which lacks order_management.
-        String pid = seedProduct(tenantId, "Coughsyrup", "CS-001", "800.00", 5, 0, "300");
-
-        mockMvc.perform(post("/api/v1/public/ph-gate/pharmacy/orders")
-                        .header("X-Conddo-Site-Key", key)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "items", List.of(Map.of("productId", pid, "quantity", 1)),
-                                "customer", Map.of(
-                                        "fullName", "Test Buyer",
-                                        "phone", "0809000444")))))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("MODULE_NOT_ENABLED"));
+    void moduleGateBlocksLauncherTenantsFromOrderIntake_supersededByV33() {
+        // moved to PharmacyPublicOrderFlowTest.checkoutBlockedOnLauncherPlanReturns403
     }
 
     // ===== EXPIRY CRON — trialing → grace → expired transitions + notify ===
@@ -367,80 +305,13 @@ class PublicSiteFlowTest {
     // ===== NOTIFICATIONS — public-website order fans out to merchant ========
 
     @Test
-    void publicOrderEmailsOwnerAndSmsOwnerAndAddsBellFeedRow() throws Exception {
-        String tenantId = signup("ph-notify", "owner@ph-notify.test");
-        String tenantToken = login("ph-notify", "owner@ph-notify.test");
-        String key = regenerateKey(tenantToken);
-        activateSite(tenantId, "ph-notify");
-        upgradeToGrowth(tenantId);
-        // Signup doesn't capture a phone on the User row, so seed the
-        // tenant's business contactPhone — the listener falls back to it
-        // when the owner user has no phone on file (typical real case).
-        try (Connection owner = ownerConn();
-             PreparedStatement ps = owner.prepareStatement(
-                     "UPDATE tenants SET contact_phone = ? WHERE id = ?::uuid")) {
-            ps.setString(1, "+2348091234567");
-            ps.setString(2, tenantId);
-            ps.executeUpdate();
-        }
-        String pid = seedProduct(tenantId, "Vit C", "VC-1", "500.00", 5, 0, "100");
-
-        mockMvc.perform(post("/api/v1/public/ph-notify/pharmacy/orders")
-                        .header("X-Conddo-Site-Key", key)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "items", List.of(Map.of("productId", pid, "quantity", 2)),
-                                "customer", Map.of(
-                                        "fullName", "Walk-in Buyer",
-                                        "phone", "0809000111")))))
-                .andExpect(status().isCreated());
-
-        // @Async listener — give it up to 5s to fire.
-        verify(emailSender, timeout(5_000)).send(
-                eq("owner@ph-notify.test"),
-                contains("New order"),
-                contains("Walk-in Buyer"));
-        verify(smsSender, timeout(5_000)).send(
-                eq("+2348091234567"),
-                contains("Walk-in Buyer"));
-
-        // Bell feed gets the ORDER row.
-        MvcResult feed = mockMvc.perform(get("/api/v1/notifications")
-                        .header(HttpHeaders.AUTHORIZATION, bearer(tenantToken)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].type").value("ORDER"))
-                .andReturn();
-        JsonNode top = objectMapper.readTree(feed.getResponse().getContentAsString())
-                .path("data").path("items").get(0);
-        assertTrue(top.path("title").asText().contains("New order"),
-                "bell feed title should mention the order: " + top);
+    void publicOrderEmailsOwnerAndSmsOwnerAndAddsBellFeedRow_supersededByV33() {
+        // moved to PharmacyPublicOrderFlowTest.successfulCheckoutNotifiesOwner
     }
 
     @Test
-    void rolledBackOrderDoesNotNotify() throws Exception {
-        String tenantId = signup("ph-rollback", "owner@ph-rollback.test");
-        String tenantToken = login("ph-rollback", "owner@ph-rollback.test");
-        String key = regenerateKey(tenantToken);
-        activateSite(tenantId, "ph-rollback");
-        upgradeToGrowth(tenantId);
-        String pid = seedProduct(tenantId, "Out-of-stock", "OS-1", "500.00", 1, 0, "100");
-
-        // Order qty=2 of a 1-stock product → 409 STOCK_SHORTAGE, transaction rolls back.
-        mockMvc.perform(post("/api/v1/public/ph-rollback/pharmacy/orders")
-                        .header("X-Conddo-Site-Key", key)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "items", List.of(Map.of("productId", pid, "quantity", 2)),
-                                "customer", Map.of(
-                                        "fullName", "Bogus Buyer",
-                                        "phone", "0809000222")))))
-                .andExpect(status().isConflict());
-
-        // 500ms is plenty for any AFTER_COMMIT misfire to land. The buyer's
-        // name is unique to this test, so verify it never reaches the senders.
-        Thread.sleep(500);
-        verify(emailSender, never()).send(anyString(), anyString(), contains("Bogus Buyer"));
-        verify(smsSender, never()).send(anyString(), contains("Bogus Buyer"));
+    void rolledBackOrderDoesNotNotify_supersededByV33() {
+        // moved to PharmacyPublicOrderFlowTest.rolledBackCheckoutDoesNotNotify
     }
 
     // ===== ACTIVATION FLOW — claim subdomain → submit → SUPER_ADMIN approve ==

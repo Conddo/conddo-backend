@@ -12,12 +12,15 @@ import io.conddo.core.auth.PhoneNotVerifiedException;
 import io.conddo.core.auth.RegistrationNotFoundException;
 import io.conddo.core.auth.UserAlreadyExistsException;
 import io.conddo.core.auth.UserNotFoundException;
+import io.conddo.api.publicapi.PublicCustomerAuth;
 import io.conddo.api.publicapi.PublicSiteController;
 import io.conddo.core.service.BrandPackageService;
 import io.conddo.core.service.CreativeServiceService;
 import io.conddo.core.service.MediaService;
 import io.conddo.core.service.PrescriptionService;
+import io.conddo.core.service.PublicCartService;
 import io.conddo.core.service.PublicCustomerAuthService;
+import io.conddo.core.service.PublicOrderCheckoutService;
 import io.conddo.core.service.SocialMarketingService;
 import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.common.ApiError;
@@ -308,6 +311,62 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleCustomerInvalidCreds(PublicCustomerAuthService.InvalidCustomerCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.fail(ApiError.of("INVALID_CREDENTIALS", ex.getMessage())));
+    }
+
+    /** Missing or bad customer JWT on a public-website endpoint — 401 UNAUTHENTICATED. */
+    @ExceptionHandler(PublicCustomerAuth.UnauthenticatedCustomerException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthenticatedCustomer(PublicCustomerAuth.UnauthenticatedCustomerException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(ApiError.of("UNAUTHENTICATED", ex.getMessage())));
+    }
+
+    /** Public cart add: quantity exceeds available stock — 400 INSUFFICIENT_STOCK. */
+    @ExceptionHandler(PublicCartService.InsufficientStockException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInsufficientStock(PublicCartService.InsufficientStockException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("INSUFFICIENT_STOCK", ex.getMessage(),
+                        java.util.List.of(
+                                new ApiError.FieldError("productId", String.valueOf(ex.getProductId())),
+                                new ApiError.FieldError("available", String.valueOf(ex.getAvailable())),
+                                new ApiError.FieldError("requested", String.valueOf(ex.getRequested()))))));
+    }
+
+    /**
+     * Public order checkout lost the stock race
+     * (PHARMACY_PUBLIC_API_SPEC §5). Same shape as the merchant-website
+     * STOCK_SHORTAGE — {@code {error, items[]}} outside the standard
+     * envelope so the FE renders the inline diff.
+     */
+    @ExceptionHandler(PublicOrderCheckoutService.StockShortageException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleCheckoutShortage(PublicOrderCheckoutService.StockShortageException ex) {
+        java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("error", "OUT_OF_STOCK");
+        body.put("items", ex.getItems());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /** Order contains prescription items but no prescriptionId attached — 400 PRESCRIPTION_REQUIRED. */
+    @ExceptionHandler(PublicOrderCheckoutService.PrescriptionRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePrescriptionRequired(PublicOrderCheckoutService.PrescriptionRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("PRESCRIPTION_REQUIRED", ex.getMessage())));
+    }
+
+    /** Customer tried to fetch another customer's order — 403 (spec §5 detail). */
+    @ExceptionHandler(PublicOrderCheckoutService.OrderNotYoursException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOrderNotYours(PublicOrderCheckoutService.OrderNotYoursException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("FORBIDDEN", ex.getMessage())));
+    }
+
+    /**
+     * Launcher-plan tenants can't accept online orders — preserves the
+     * Phase-1 gate now that the order flow runs through V33.
+     */
+    @ExceptionHandler(PublicOrderCheckoutService.ModuleNotEnabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePublicModuleNotEnabled(PublicOrderCheckoutService.ModuleNotEnabledException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("MODULE_NOT_ENABLED", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)
