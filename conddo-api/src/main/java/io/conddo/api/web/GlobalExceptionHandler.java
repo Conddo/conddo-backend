@@ -17,6 +17,7 @@ import io.conddo.core.service.BrandPackageService;
 import io.conddo.core.service.CreativeServiceService;
 import io.conddo.core.service.MediaService;
 import io.conddo.core.service.PrescriptionService;
+import io.conddo.core.service.PublicCustomerAuthService;
 import io.conddo.core.service.SocialMarketingService;
 import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.common.ApiError;
@@ -290,6 +291,23 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("QUOTA_EXHAUSTED", ex.getMessage(),
                         java.util.List.of(new ApiError.FieldError("offeringCode",
                                 "used " + ex.getQuota() + "/" + ex.getQuota())))));
+    }
+
+    /**
+     * Public-website customer self-register tried an email already in use on
+     * the same tenant (PHARMACY_PUBLIC_API_SPEC §2). 409 with EMAIL_TAKEN.
+     */
+    @ExceptionHandler(PublicCustomerAuthService.EmailAlreadyRegisteredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCustomerEmailTaken(PublicCustomerAuthService.EmailAlreadyRegisteredException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("EMAIL_TAKEN", ex.getMessage())));
+    }
+
+    /** Public-website customer login: bad email or password — 401 INVALID_CREDENTIALS. */
+    @ExceptionHandler(PublicCustomerAuthService.InvalidCustomerCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCustomerInvalidCreds(PublicCustomerAuthService.InvalidCustomerCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.fail(ApiError.of("INVALID_CREDENTIALS", ex.getMessage())));
     }
 
     @ExceptionHandler(Exception.class)

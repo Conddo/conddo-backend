@@ -26,6 +26,12 @@ public class ProductCategory {
     @Column(nullable = false)
     private String name;
 
+    /** URL-safe key, unique per tenant; the public catalog filter takes this. */
+    private String slug;
+
+    /** FE icon name (e.g. {@code "pill"}); informational only — FE maps to its iconset. */
+    private String icon;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -42,13 +48,37 @@ public class ProductCategory {
         return id;
     }
 
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
     public String getName() {
         return name;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public String getIcon() {
+        return icon;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
     }
 
     public void setName(String name) {
         if (name != null && !name.isBlank()) {
             this.name = name;
         }
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
+    }
+
+    public void setIcon(String icon) {
+        this.icon = icon;
     }
 }

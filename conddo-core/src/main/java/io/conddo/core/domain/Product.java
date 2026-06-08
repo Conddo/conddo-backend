@@ -7,11 +7,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -57,6 +60,40 @@ public class Product {
     /** Batch / lot number associated with the current stock. Informational at V1; Phase 2 splits into a batches table. */
     @Column(name = "batch_number")
     private String batchNumber;
+
+    // ----- pharmacy public-spec fields (V32) ---------------------------------
+
+    @Column(name = "name_generic")
+    private String nameGeneric;
+
+    @Column(name = "name_brand")
+    private String nameBrand;
+
+    /** URL-safe key; unique per tenant. The public detail endpoint resolves on this. */
+    private String slug;
+
+    private String description;
+
+    private String indications;
+
+    @Column(name = "dosage_guidance")
+    private String dosageGuidance;
+
+    private String warnings;
+
+    private String storage;
+
+    @Column(name = "requires_prescription", nullable = false)
+    private boolean requiresPrescription = false;
+
+    @Column(name = "nafdac_number")
+    private String nafdacNumber;
+
+    private String brand;
+
+    /** Cloudinary URLs surfaced on the public catalog. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    private List<String> images;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -171,5 +208,115 @@ public class Product {
 
     public void setBatchNumber(String batchNumber) {
         this.batchNumber = batchNumber;
+    }
+
+    // ----- pharmacy public-spec accessors (V32) -----------------------------
+
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
+    public String getNameGeneric() {
+        return nameGeneric;
+    }
+
+    public String getNameBrand() {
+        return nameBrand;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public String getIndications() {
+        return indications;
+    }
+
+    public String getDosageGuidance() {
+        return dosageGuidance;
+    }
+
+    public String getWarnings() {
+        return warnings;
+    }
+
+    public String getStorage() {
+        return storage;
+    }
+
+    public boolean isRequiresPrescription() {
+        return requiresPrescription;
+    }
+
+    public String getNafdacNumber() {
+        return nafdacNumber;
+    }
+
+    public String getBrand() {
+        return brand;
+    }
+
+    public List<String> getImages() {
+        return images;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setNameGeneric(String nameGeneric) {
+        this.nameGeneric = nameGeneric;
+    }
+
+    public void setNameBrand(String nameBrand) {
+        this.nameBrand = nameBrand;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public void setIndications(String indications) {
+        this.indications = indications;
+    }
+
+    public void setDosageGuidance(String dosageGuidance) {
+        this.dosageGuidance = dosageGuidance;
+    }
+
+    public void setWarnings(String warnings) {
+        this.warnings = warnings;
+    }
+
+    public void setStorage(String storage) {
+        this.storage = storage;
+    }
+
+    public void setRequiresPrescription(boolean requiresPrescription) {
+        this.requiresPrescription = requiresPrescription;
+    }
+
+    public void setNafdacNumber(String nafdacNumber) {
+        this.nafdacNumber = nafdacNumber;
+    }
+
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
+
+    public void setImages(List<String> images) {
+        this.images = images;
     }
 }

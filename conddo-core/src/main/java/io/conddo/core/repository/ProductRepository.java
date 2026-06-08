@@ -19,4 +19,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
     @Query("select count(p) from Product p where p.reorderThreshold > 0 and p.stock <= p.reorderThreshold")
     long countLowStock();
+
+    /** Public catalog detail lookup by per-tenant slug. RLS-scoped to the bound tenant. */
+    java.util.Optional<Product> findBySlugAndActiveTrue(String slug);
 }

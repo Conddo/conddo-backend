@@ -88,22 +88,11 @@ public class PublicSiteController {
         return ApiResponse.ok(buildStoreInfo(tenant));
     }
 
-    /** Pharmacy catalog (always JSON list). Gated by {@code order_management}. */
-    @GetMapping("/pharmacy/products")
-    @Transactional(readOnly = true)
-    public ApiResponse<List<PublicProduct>> products(@PathVariable String slug) {
-        if (!billingService.hasFeature(TenantContext.require(), "order_management")) {
-            throw new ModuleNotEnabled("Catalog browsing isn't enabled on the merchant's plan.");
-        }
-        tenantSession.bind();
-        List<PublicProduct> rows = new ArrayList<>();
-        for (Product p : productRepository.findAll()) {
-            if (p.isActive()) {
-                rows.add(PublicProduct.from(p));
-            }
-        }
-        return ApiResponse.ok(rows);
-    }
+    // Phase-1 GET /pharmacy/products is superseded by the full
+    // PHARMACY_PUBLIC_API_SPEC §3 implementation in
+    // PublicPharmacyCatalogController — it returns the rich product
+    // shape (slug, brand, indications, requiresPrescription, ...)
+    // with the spec's pagination + filter contract.
 
     /**
      * Public order intake (WEBSITE_INTEGRATION_SPEC §3 stock-race). Per line:

@@ -1,6 +1,8 @@
 package io.conddo.api.security;
 
+import io.conddo.core.auth.CustomerJwtService;
 import io.conddo.core.auth.JwtService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 
 /**
  * Loads the configured RSA key pair and exposes the {@link JwtService} that
@@ -38,5 +41,19 @@ public class JwtConfig {
     @Bean
     public JwtService jwtService(RSAPublicKey jwtPublicKey, RSAPrivateKey jwtPrivateKey, JwtProperties props) {
         return new JwtService(jwtPublicKey, jwtPrivateKey, props.issuer(), props.accessTtl());
+    }
+
+    /**
+     * Customer JWT service for the merchant-website-facing public surface
+     * (PHARMACY_PUBLIC_API_SPEC §2). HMAC-SHA256 with the
+     * {@code CONDDO_CUSTOMER_JWT_SECRET} env var. TTL defaults to 30 days
+     * — customers expect a long-lived session on their pharmacy account,
+     * the merchant can flip it shorter via {@code conddo.customer-jwt.ttl}.
+     */
+    @Bean
+    public CustomerJwtService customerJwtService(
+            @Value("${conddo.customer-jwt.secret:dev-customer-jwt-secret-at-least-32-bytes-long-pad}") String secret,
+            @Value("${conddo.customer-jwt.ttl:30d}") Duration ttl) {
+        return new CustomerJwtService(secret, ttl);
     }
 }

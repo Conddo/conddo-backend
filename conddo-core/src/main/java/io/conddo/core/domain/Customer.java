@@ -42,6 +42,14 @@ public class Customer {
 
     private String notes;
 
+    /**
+     * bcrypt hash, only set on rows the customer self-registered via the
+     * pharmacy website. Null on merchant-created rows (walk-in entry, order
+     * intake) — those customers can't log in until they go through register.
+     */
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @Column(name = "total_spent", nullable = false)
     private BigDecimal totalSpent = BigDecimal.ZERO;
 
@@ -85,6 +93,15 @@ public class Customer {
 
     public String getEmail() {
         return email;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    /** Set the password hash when the customer self-registers / changes password. */
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 
     public String getPhone() {

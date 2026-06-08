@@ -12,4 +12,6 @@ public interface ProductCategoryRepository extends JpaRepository<ProductCategory
     List<ProductCategory> findAllByOrderByName();
 
     Optional<ProductCategory> findByName(String name);
+
+    Optional<ProductCategory> findBySlug(String slug);
 }

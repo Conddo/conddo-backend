@@ -68,6 +68,20 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(errorResponder)
+                        // The customer-side public surface (PHARMACY_PUBLIC_API_SPEC §2)
+                        // carries a HMAC-signed Bearer token issued by CustomerJwtService
+                        // — verified inline by PublicCustomerAuthController, NOT by the
+                        // resource server's platform JWT decoder. Return null on those
+                        // paths so the resource server doesn't try (and fail) to
+                        // validate the customer token as a platform JWT.
+                        .bearerTokenResolver(request -> {
+                            String uri = request.getRequestURI();
+                            if (uri != null && uri.startsWith("/api/v1/public/")) {
+                                return null;
+                            }
+                            return new org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver()
+                                    .resolve(request);
+                        })
                         .jwt(jwt -> jwt
                                 .decoder(jwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())))

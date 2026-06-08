@@ -23,4 +23,11 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID>, JpaSp
 
     /** Customers created in the window, for the analytics new-customer series (§11.9). */
     java.util.List<Customer> findByCreatedAtBetween(OffsetDateTime start, OffsetDateTime end);
+
+    /**
+     * Customer-side login lookup (PHARMACY_PUBLIC_API_SPEC §2). RLS scopes
+     * to the bound tenant — emails are unique per tenant, so this returns
+     * at most one row.
+     */
+    java.util.Optional<Customer> findByEmail(String email);
 }
