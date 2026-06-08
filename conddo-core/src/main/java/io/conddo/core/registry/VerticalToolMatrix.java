@@ -68,7 +68,8 @@ public class VerticalToolMatrix {
                 // Bookings is the headline module (rooms/booths/lesson slots), payments
                 // handles deposit-at-booking — the killer feature for stopping ghost bookings.
                 Map.entry("music-studio", tiers(
-                        List.of("website", "crm", "bookings", "payments", "inventory", "analytics"),
+                        List.of("website", "crm", "bookings", "sessions.music-studio",
+                                "payments", "inventory", "analytics"),
                         List.of("staff", "marketing.social", "marketing.email", "marketing.sms", "projects"),
                         List.of("marketing.ads", "music-school"))),
                 // Fallback for unknown/"general" verticals: a generic orders-centric business.

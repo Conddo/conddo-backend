@@ -1229,6 +1229,28 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.data[3].navItem.path").value("/marketing"));
     }
 
+    /**
+     * Music-studio tenants get a {@code Sessions} nav entry alongside
+     * the generic {@code Bookings} (MUSIC_STUDIO_SPEC §2). The FE
+     * {@code /sessions} page is shipped — without this section the
+     * sidebar never surfaces it.
+     */
+    @Test
+    void registryManifestsExposeSessionsSectionForMusicStudio() throws Exception {
+        String token = signupVerticalAndLogin("ms-sess", "owner@ms-sess.test", "music-studio");
+
+        // The music-studio starter tier carries `sessions.music-studio`;
+        // hit the manifest endpoint with the resolved tool list.
+        mockMvc.perform(get("/api/v1/registry/manifests")
+                        .param("modules",
+                                "website,crm,bookings,sessions.music-studio,payments,inventory,analytics")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.toolId=='sessions')].navItem.label").value("Sessions"))
+                .andExpect(jsonPath("$.data[?(@.toolId=='sessions')].navItem.path").value("/sessions"))
+                .andExpect(jsonPath("$.data[?(@.toolId=='sessions')].navItem.icon").value("headphones"));
+    }
+
     @Test
     void customerOrderAndPaymentHistory() throws Exception {
         String token = signupVerticalAndLogin("hist-a", "owner@hist.test", "fashion");

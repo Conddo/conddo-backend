@@ -46,6 +46,7 @@ public class ManifestCatalogue {
         section("inventory", "Inventory", "package", "/inventory", 50,
                 "inventory", "inventory.pharmacy", "inventory.retail");
         section("fittings", "Fittings", "scissors", "/fittings", 58, "fittings.fashion");
+        section("sessions", "Sessions", "headphones", "/sessions", 58, "sessions.music-studio");
         section("store", "Store", "shopping-cart", "/store", 52, "ecommerce");
         section("pos", "POS", "scan-line", "/pos", 55, "pos", "pos.pharmacy");
         section("bookings", "Bookings", "calendar", "/bookings", 60, "bookings");
