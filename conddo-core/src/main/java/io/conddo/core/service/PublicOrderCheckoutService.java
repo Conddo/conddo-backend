@@ -55,6 +55,7 @@ public class PublicOrderCheckoutService {
     private final PharmacyDeliveryFeeService deliveryFeeService;
     private final BillingService billingService;
     private final StockMovementService stockMovementService;
+    private final PharmacyDiscountService discountService;
     private final ApplicationEventPublisher events;
     private final TenantSession tenantSession;
 
@@ -71,6 +72,7 @@ public class PublicOrderCheckoutService {
                                       PharmacyDeliveryFeeService deliveryFeeService,
                                       BillingService billingService,
                                       StockMovementService stockMovementService,
+                                      PharmacyDiscountService discountService,
                                       ApplicationEventPublisher events,
                                       TenantSession tenantSession) {
         this.productRepository = productRepository;
@@ -83,6 +85,7 @@ public class PublicOrderCheckoutService {
         this.deliveryFeeService = deliveryFeeService;
         this.billingService = billingService;
         this.stockMovementService = stockMovementService;
+        this.discountService = discountService;
         this.events = events;
         this.tenantSession = tenantSession;
     }
@@ -142,11 +145,19 @@ public class PublicOrderCheckoutService {
                 prescriptionRequired = true;
             }
             locked.add(p);
-            BigDecimal price = p.getPrice() == null ? BigDecimal.ZERO : p.getPrice();
-            subtotal = subtotal.add(price.multiply(BigDecimal.valueOf(item.quantity())));
+            BigDecimal listPrice = p.getPrice() == null ? BigDecimal.ZERO : p.getPrice();
+            // Spec v2 §5 — apply active discounts at order time. The
+            // discounted price becomes the unit price; the discount details
+            // are snapshotted into OrderItem so the customer-paid price is
+            // preserved after the discount expires.
+            io.conddo.core.domain.PharmacyDiscount activeDiscount =
+                    discountService.activeForProduct(p.getId()).orElse(null);
+            BigDecimal effectivePrice = activeDiscount == null
+                    ? listPrice : activeDiscount.applyTo(listPrice);
+            subtotal = subtotal.add(effectivePrice.multiply(BigDecimal.valueOf(item.quantity())));
             orderItems.add(new OrderService.NewItem(
                     p.getNameGeneric() == null ? p.getName() : p.getNameGeneric(),
-                    item.quantity(), price));
+                    item.quantity(), effectivePrice));
         }
         if (!shortages.isEmpty()) {
             throw new StockShortageException(shortages);

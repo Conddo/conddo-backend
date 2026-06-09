@@ -1,8 +1,10 @@
 package io.conddo.api.publicapi;
 
+import io.conddo.core.domain.PharmacyDiscount;
 import io.conddo.core.domain.Product;
 import io.conddo.core.domain.ProductCategory;
 import io.conddo.core.service.PharmacyDeliveryFeeService;
+import io.conddo.core.service.PharmacyDiscountService;
 import io.conddo.core.service.PublicPharmacyCatalogService;
 import io.conddo.core.service.PublicPharmacyCatalogService.CatalogPage;
 import io.conddo.core.service.PublicPharmacyCatalogService.CategoryView;
@@ -31,11 +33,14 @@ public class PublicPharmacyCatalogController {
 
     private final PublicPharmacyCatalogService catalog;
     private final PharmacyDeliveryFeeService deliveryFee;
+    private final PharmacyDiscountService discounts;
 
     public PublicPharmacyCatalogController(PublicPharmacyCatalogService catalog,
-                                           PharmacyDeliveryFeeService deliveryFee) {
+                                           PharmacyDeliveryFeeService deliveryFee,
+                                           PharmacyDiscountService discounts) {
         this.catalog = catalog;
         this.deliveryFee = deliveryFee;
+        this.discounts = discounts;
     }
 
     @GetMapping("/products")
@@ -96,11 +101,14 @@ public class PublicPharmacyCatalogController {
     // ----- DTOs --------------------------------------------------------------
 
     /**
-     * Trims to the FE-binding shape (PHARMACY_PUBLIC_API_SPEC §3) — no
-     * reorderThreshold, cost, batch/expiry. Stock is the actual integer
-     * (the FE shows "X in stock" for low quantities).
+     * Trims to the FE-binding shape (PHARMACY_PUBLIC_API_SPEC §3 +
+     * Spec v2 §3 discount fields) — no reorderThreshold, cost,
+     * batch/expiry. Stock is the actual integer. {@code discountedPrice}
+     * / {@code discountPercent} / {@code discountLabel} /
+     * {@code discountEndsAt} are populated when an APPROVED discount
+     * is currently within its time window; null otherwise.
      */
-    private static Map<String, Object> toProductDto(Product p, ProductCategory category) {
+    private Map<String, Object> toProductDto(Product p, ProductCategory category) {
         LinkedHashMap<String, Object> m = new LinkedHashMap<>();
         m.put("id", p.getId());
         m.put("nameGeneric", p.getNameGeneric() == null ? p.getName() : p.getNameGeneric());
@@ -111,7 +119,26 @@ public class PublicPharmacyCatalogController {
         m.put("dosageGuidance", p.getDosageGuidance());
         m.put("warnings", p.getWarnings());
         m.put("storage", p.getStorage());
-        m.put("price", p.getPrice() == null ? BigDecimal.ZERO : p.getPrice());
+        BigDecimal price = p.getPrice() == null ? BigDecimal.ZERO : p.getPrice();
+        m.put("price", price);
+        PharmacyDiscount discount = discounts.activeForProduct(p.getId()).orElse(null);
+        if (discount != null) {
+            BigDecimal discountedPrice = discount.applyTo(price);
+            m.put("discountedPrice", discountedPrice);
+            m.put("discountValue", discount.getDiscountValue());
+            m.put("discountType", discount.getDiscountType());
+            m.put("discountLabel", discount.getLabel());
+            m.put("discountEndsAt", discount.getEndsAt());
+            if (PharmacyDiscount.TYPE_PERCENTAGE.equals(discount.getDiscountType())) {
+                m.put("discountPercent", discount.getDiscountValue().intValue());
+            }
+        } else {
+            m.put("discountedPrice", null);
+            m.put("discountValue", null);
+            m.put("discountType", null);
+            m.put("discountLabel", null);
+            m.put("discountEndsAt", null);
+        }
         m.put("requiresPrescription", p.isRequiresPrescription());
         m.put("stockQty", p.getStock());
         m.put("nafdacNumber", p.getNafdacNumber());
