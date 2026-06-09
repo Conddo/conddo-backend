@@ -1012,6 +1012,84 @@ class AuthFlowTest {
                 .path("data").path("id").asText();
     }
 
+    /**
+     * Plan switching — proves the flush-ordering bug that surfaced as
+     * "Couldn't change plan — an unexpected error occurred" on the FE.
+     * Without {@code saveAndFlush} on the cancelled row, Hibernate's
+     * default action ordering INSERTs the new {@code active} replacement
+     * before UPDATING the old row's status, which violates
+     * {@code idx_tenant_active_sub} (one active row per tenant) and
+     * surfaces as a 500.
+     *
+     * <p>This test also exercises a second switch (upgrade → downgrade)
+     * to prove the partial unique index continues to hold across
+     * repeated transitions.
+     */
+    @Test
+    void tenantCanSwitchPlansAcrossUpgradeAndDowngrade() throws Exception {
+        String token = signupVerticalAndLogin("plan-switch", "owner@plan-switch.test", "general");
+        // Trial subscription lands via @Async AFTER_COMMIT listener — poll briefly.
+        awaitSubscription(token);
+
+        // Upgrade launcher → growth.
+        mockMvc.perform(post("/api/v1/billing/upgrade")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("planId", "growth"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.planId").value("growth"))
+                .andExpect(jsonPath("$.data.status").value("active"));
+
+        // GET reflects the new plan.
+        mockMvc.perform(get("/api/v1/billing/subscription")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.planId").value("growth"));
+
+        // Switch growth → scaler (proves repeat transitions don't violate the
+        // partial unique index either).
+        mockMvc.perform(post("/api/v1/billing/upgrade")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("planId", "scaler"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.planId").value("scaler"));
+
+        // And a downgrade scaler → launcher.
+        mockMvc.perform(post("/api/v1/billing/upgrade")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("planId", "launcher"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.planId").value("launcher"));
+
+        // Unknown plan name → 404 (mapped from NotFoundException).
+        mockMvc.perform(post("/api/v1/billing/upgrade")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("planId", "nonexistent"))))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Trial subscription is created asynchronously by an AFTER_COMMIT
+     * listener on tenant signup. Poll the read endpoint briefly so the
+     * test isn't flaky in CI.
+     */
+    private void awaitSubscription(String token) throws Exception {
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (System.currentTimeMillis() < deadline) {
+            int status = mockMvc.perform(get("/api/v1/billing/subscription")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                    .andReturn().getResponse().getStatus();
+            if (status == 200) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        throw new IllegalStateException("trial subscription never landed");
+    }
+
     @Test
     void staffInviteListRoleChangeAndDeactivate() throws Exception {
         String token = signupVerticalAndLogin("staff-a", "owner@staff.test", "general");

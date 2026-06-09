@@ -140,12 +140,17 @@ public class BillingService {
 
         // Carry over remaining time so the upgrade isn't a downgrade in disguise.
         OffsetDateTime newExpiry = now.isAfter(current.getExpiresAt())
-                ? now.plus(billingCycle.equals("quarterly") ? 90 : 30, ChronoUnit.DAYS)
+                ? now.plus("quarterly".equals(billingCycle) ? 90 : 30, ChronoUnit.DAYS)
                 : current.getExpiresAt();
-        // Cancel the old row, insert the new active row.
+        // Cancel the old row, then flush — the partial unique index
+        // `idx_tenant_active_sub` allows at most one row per tenant in
+        // (trialing|active|grace). Hibernate's default action order
+        // does INSERTs before UPDATEs, so without saveAndFlush() the new
+        // 'active' row tries to insert while the old row is still
+        // 'active' in the DB → constraint violation → 500.
         current.cancel(now);
         current.completeCancellation();
-        subscriptionRepository.save(current);
+        subscriptionRepository.saveAndFlush(current);
 
         TenantSubscription replacement = new TenantSubscription(tenantId, target.getId(),
                 billingCycle == null ? "monthly" : billingCycle, "active", now, newExpiry, null);
