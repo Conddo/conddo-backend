@@ -5,9 +5,11 @@ import io.conddo.api.web.dto.CategoryDto;
 import io.conddo.api.web.dto.CreateCategoryRequest;
 import io.conddo.api.web.dto.CreateProductRequest;
 import io.conddo.api.web.dto.ProductRow;
+import io.conddo.api.web.dto.UpdateCategoryRequest;
 import io.conddo.api.web.dto.UpdateProductRequest;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.service.InventoryService;
+import io.conddo.core.service.InventoryService.CategoryWithCount;
 import io.conddo.core.service.InventoryService.ProductView;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -80,14 +82,39 @@ public class InventoryController {
     @GetMapping("/categories")
     @PreAuthorize(READ)
     public ApiResponse<List<CategoryDto>> categories() {
-        return ApiResponse.ok(inventoryService.categories().stream().map(CategoryDto::from).toList());
+        return ApiResponse.ok(inventoryService.categoriesWithCount().stream()
+                .map(CategoryDto::from).toList());
     }
 
     @PostMapping("/categories")
     @PreAuthorize(WRITE)
     public ResponseEntity<ApiResponse<CategoryDto>> createCategory(@Valid @RequestBody CreateCategoryRequest request) {
-        CategoryDto body = CategoryDto.from(inventoryService.createCategory(request.name()));
+        var created = inventoryService.createCategory(request.name());
+        // A fresh category has nothing pointing at it yet — surface 0 explicitly
+        // so the FE can render the empty-count chip without a follow-up GET.
+        CategoryDto body = new CategoryDto(created.getId(), created.getName(), 0);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
+    }
+
+    /** Rename — see HANDOFF_2026-06-09 §2.1. Wire shape mirrors POST. */
+    @org.springframework.web.bind.annotation.PatchMapping("/categories/{id}")
+    @PreAuthorize(WRITE)
+    public ApiResponse<CategoryDto> updateCategory(@PathVariable UUID id,
+                                                   @Valid @RequestBody UpdateCategoryRequest request) {
+        CategoryWithCount view = inventoryService.renameCategory(id, request.name());
+        return ApiResponse.ok(CategoryDto.from(view));
+    }
+
+    /**
+     * Delete — see HANDOFF_2026-06-09 §2.2. 204 on success, 409 when
+     * products still reference it (the service throws and the global
+     * handler maps to CONFLICT).
+     */
+    @DeleteMapping("/categories/{id}")
+    @PreAuthorize(WRITE)
+    public ResponseEntity<Void> deleteCategory(@PathVariable UUID id) {
+        inventoryService.deleteCategory(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/products/{id}")

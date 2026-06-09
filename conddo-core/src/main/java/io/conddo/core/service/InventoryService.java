@@ -180,13 +180,88 @@ public class InventoryService {
         return categoryRepository.findAllByOrderByName();
     }
 
+    /**
+     * Same list as {@link #categories()} but with each row's
+     * {@code productCount} populated. The dashboard category manager
+     * (HANDOFF_2026-06-09 §2.3) uses the count to enable/disable the
+     * delete button and to surface "12 products" subtitles.
+     */
+    @Transactional(readOnly = true)
+    public List<CategoryWithCount> categoriesWithCount() {
+        tenantSession.bind();
+        List<CategoryWithCount> out = new ArrayList<>();
+        for (ProductCategory c : categoryRepository.findAllByOrderByName()) {
+            out.add(new CategoryWithCount(c, productRepository.countByCategoryId(c.getId())));
+        }
+        return out;
+    }
+
     @Transactional
     public ProductCategory createCategory(String name) {
         tenantSession.bind();
-        if (categoryRepository.findByName(name).isPresent()) {
-            throw new IllegalArgumentException("Category already exists: " + name);
+        String trimmed = requireValidCategoryName(name);
+        if (categoryRepository.findByNameIgnoreCase(trimmed).isPresent()) {
+            throw new IllegalArgumentException("Category already exists: " + trimmed);
         }
-        return categoryRepository.save(new ProductCategory(TenantContext.require(), name));
+        return categoryRepository.save(new ProductCategory(TenantContext.require(), trimmed));
+    }
+
+    /**
+     * Rename a category (HANDOFF_2026-06-09 §2.1). Throws
+     * {@link NotFoundException} for an unknown id and
+     * {@link IllegalArgumentException} (→ 409 CONFLICT) when another
+     * category in the same tenant already owns the requested name
+     * (case-insensitive). Blank / too-long names are rejected as
+     * {@code IllegalArgumentException} before the rename runs.
+     */
+    @Transactional
+    public CategoryWithCount renameCategory(UUID id, String name) {
+        tenantSession.bind();
+        String trimmed = requireValidCategoryName(name);
+        ProductCategory category = requireCategory(id);
+        if (!trimmed.equalsIgnoreCase(category.getName())) {
+            categoryRepository.findByNameIgnoreCase(trimmed).ifPresent(other -> {
+                if (!other.getId().equals(id)) {
+                    throw new IllegalArgumentException("Category already exists: " + trimmed);
+                }
+            });
+        }
+        category.setName(trimmed);
+        ProductCategory saved = categoryRepository.save(category);
+        return new CategoryWithCount(saved, productRepository.countByCategoryId(saved.getId()));
+    }
+
+    /**
+     * Delete a category (HANDOFF_2026-06-09 §2.2). No cascade, no
+     * reassign-to-Uncategorised — refuse the delete if any product
+     * still references the category (409). FE pre-checks but
+     * concurrent edits exist.
+     */
+    @Transactional
+    public void deleteCategory(UUID id) {
+        tenantSession.bind();
+        ProductCategory category = requireCategory(id);
+        int referencing = productRepository.countByCategoryId(category.getId());
+        if (referencing > 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete category — " + referencing + " product(s) still reference it.");
+        }
+        categoryRepository.delete(category);
+    }
+
+    private static String requireValidCategoryName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Category name is required");
+        }
+        String trimmed = name.trim();
+        if (trimmed.length() > 80) {
+            throw new IllegalArgumentException("Category name must be 80 characters or fewer");
+        }
+        return trimmed;
+    }
+
+    /** {@link ProductCategory} plus a live tally — used by the dashboard category manager. */
+    public record CategoryWithCount(ProductCategory category, int productCount) {
     }
 
     // ----- internals ----------------------------------------------------------

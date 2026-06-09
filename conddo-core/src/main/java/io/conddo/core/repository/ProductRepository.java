@@ -22,4 +22,7 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
     /** Public catalog detail lookup by per-tenant slug. RLS-scoped to the bound tenant. */
     java.util.Optional<Product> findBySlugAndActiveTrue(String slug);
+
+    /** How many products are tagged to a category. RLS-scoped. */
+    int countByCategoryId(UUID categoryId);
 }

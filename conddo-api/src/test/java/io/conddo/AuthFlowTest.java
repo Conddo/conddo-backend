@@ -902,6 +902,116 @@ class AuthFlowTest {
                 .andExpect(status().isNotFound());
     }
 
+    /**
+     * Category CRUD per HANDOFF_2026-06-09. Covers rename + delete +
+     * productCount + the validation branches the FE depends on
+     * (409 on duplicate rename, 409 on delete-while-in-use, 400 on
+     * blank name, 404 on unknown id). Previously PATCH and DELETE
+     * crashed with 500 — both endpoints did not exist.
+     */
+    @Test
+    void inventoryCategoryRenameDeleteAndProductCount() throws Exception {
+        String token = signupVerticalAndLogin("inv-cat", "owner@inv-cat.test", "general");
+
+        // Seed two categories: one we'll rename + delete (empty), one we'll
+        // attach a product to so it refuses delete (409).
+        String emptyId = createCategory(token, "Smoke Test Category");
+        String usedId = createCategory(token, "Used Category");
+
+        // Attach a product to the "Used Category" so it carries productCount=1.
+        mockMvc.perform(post("/api/v1/inventory/products").header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Pinned Product", "sku", "PIN-1",
+                                "categoryId", usedId, "price", 1000, "stock", 5))))
+                .andExpect(status().isCreated());
+
+        // GET /categories includes productCount for both rows.
+        MvcResult list = mockMvc.perform(get("/api/v1/inventory/categories")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode rows = objectMapper.readTree(list.getResponse().getContentAsString()).path("data");
+        int empty = 0, used = 0;
+        for (JsonNode row : rows) {
+            if (row.path("id").asText().equals(emptyId)) {
+                empty = row.path("productCount").asInt();
+            }
+            if (row.path("id").asText().equals(usedId)) {
+                used = row.path("productCount").asInt();
+            }
+        }
+        assertEquals(0, empty, "empty category should report 0 products");
+        assertEquals(1, used, "used category should report 1 product");
+
+        // PATCH rename — 200 with the count-aware shape.
+        mockMvc.perform(patch("/api/v1/inventory/categories/" + emptyId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "Renamed"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(emptyId))
+                .andExpect(jsonPath("$.data.name").value("Renamed"))
+                .andExpect(jsonPath("$.data.productCount").value(0));
+
+        // PATCH to a duplicate name (the other category's name) → 409 CONFLICT.
+        mockMvc.perform(patch("/api/v1/inventory/categories/" + emptyId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "Used Category"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CONFLICT"));
+
+        // Case-insensitive: "used category" lowercase still collides.
+        mockMvc.perform(patch("/api/v1/inventory/categories/" + emptyId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "used category"))))
+                .andExpect(status().isConflict());
+
+        // Blank name → 400 VALIDATION_ERROR.
+        mockMvc.perform(patch("/api/v1/inventory/categories/" + emptyId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "   "))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        // Unknown id → 404.
+        mockMvc.perform(patch("/api/v1/inventory/categories/00000000-0000-0000-0000-000000000000")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "Whatever"))))
+                .andExpect(status().isNotFound());
+
+        // DELETE the empty category → 204.
+        mockMvc.perform(delete("/api/v1/inventory/categories/" + emptyId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNoContent());
+
+        // DELETE the in-use category → 409 (the product still references it).
+        mockMvc.perform(delete("/api/v1/inventory/categories/" + usedId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CONFLICT"));
+
+        // DELETE unknown id → 404.
+        mockMvc.perform(delete("/api/v1/inventory/categories/00000000-0000-0000-0000-000000000000")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNotFound());
+    }
+
+    private String createCategory(String token, String name) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/inventory/categories")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", name))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("id").asText();
+    }
+
     @Test
     void staffInviteListRoleChangeAndDeactivate() throws Exception {
         String token = signupVerticalAndLogin("staff-a", "owner@staff.test", "general");

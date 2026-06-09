@@ -13,5 +13,8 @@ public interface ProductCategoryRepository extends JpaRepository<ProductCategory
 
     Optional<ProductCategory> findByName(String name);
 
+    /** Case-insensitive name lookup for rename-conflict checks (HANDOFF_2026-06-09 §2.1). */
+    Optional<ProductCategory> findByNameIgnoreCase(String name);
+
     Optional<ProductCategory> findBySlug(String slug);
 }
