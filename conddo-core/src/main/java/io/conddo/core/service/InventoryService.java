@@ -36,15 +36,19 @@ public class InventoryService {
     private final ProductRepository productRepository;
     private final ProductCategoryRepository categoryRepository;
     private final StockAdjustmentRepository adjustmentRepository;
+    private final StockMovementService stockMovementService;
     private final TenantSession tenantSession;
     private final Clock clock;
 
     public InventoryService(ProductRepository productRepository, ProductCategoryRepository categoryRepository,
-                            StockAdjustmentRepository adjustmentRepository, TenantSession tenantSession,
+                            StockAdjustmentRepository adjustmentRepository,
+                            StockMovementService stockMovementService,
+                            TenantSession tenantSession,
                             Clock clock) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.adjustmentRepository = adjustmentRepository;
+        this.stockMovementService = stockMovementService;
         this.tenantSession = tenantSession;
         this.clock = clock;
     }
@@ -155,10 +159,15 @@ public class InventoryService {
     public ProductView adjustStock(UUID id, int delta, String reason) {
         tenantSession.bind();
         Product product = requireProduct(id);
-        product.adjustStock(delta);
-        productRepository.save(product);
+        // Pre-Spec-v2 audit row stays for backwards compatibility, but the
+        // canonical movement log (Spec v2 §12A) lives in pharmacy_stock_movements
+        // via StockMovementService — it's what the FE dashboard subscribes to.
         adjustmentRepository.save(new StockAdjustment(TenantContext.require(), id, delta, reason));
-        return withCategory(product);
+        stockMovementService.recordMovement(id,
+                io.conddo.core.domain.StockMovement.Type.ADJUSTMENT, delta,
+                null, "ADJUSTMENT", reason, null);
+        // Re-fetch the now-updated product so we return current stock.
+        return withCategory(requireProduct(id));
     }
 
     @Transactional(readOnly = true)

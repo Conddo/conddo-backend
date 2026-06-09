@@ -6,6 +6,7 @@ import io.conddo.core.domain.CustomerAddress;
 import io.conddo.core.domain.CustomerPrescription;
 import io.conddo.core.domain.Order;
 import io.conddo.core.domain.Product;
+import io.conddo.core.domain.StockMovement;
 import io.conddo.core.events.OrderCreatedEvent;
 import io.conddo.core.repository.CustomerAddressRepository;
 import io.conddo.core.repository.CustomerPrescriptionRepository;
@@ -53,6 +54,7 @@ public class PublicOrderCheckoutService {
     private final PublicCartService cartService;
     private final PharmacyDeliveryFeeService deliveryFeeService;
     private final BillingService billingService;
+    private final StockMovementService stockMovementService;
     private final ApplicationEventPublisher events;
     private final TenantSession tenantSession;
 
@@ -68,6 +70,7 @@ public class PublicOrderCheckoutService {
                                       PublicCartService cartService,
                                       PharmacyDeliveryFeeService deliveryFeeService,
                                       BillingService billingService,
+                                      StockMovementService stockMovementService,
                                       ApplicationEventPublisher events,
                                       TenantSession tenantSession) {
         this.productRepository = productRepository;
@@ -79,6 +82,7 @@ public class PublicOrderCheckoutService {
         this.cartService = cartService;
         this.deliveryFeeService = deliveryFeeService;
         this.billingService = billingService;
+        this.stockMovementService = stockMovementService;
         this.events = events;
         this.tenantSession = tenantSession;
     }
@@ -152,13 +156,6 @@ public class PublicOrderCheckoutService {
                     "Order contains prescription drugs but no prescription was attached.");
         }
 
-        // Now decrement stock.
-        for (int i = 0; i < locked.size(); i++) {
-            Product p = locked.get(i);
-            p.adjustStock(-requested.get(i).quantity());
-            productRepository.save(p);
-        }
-
         // Delivery fee from the address's state.
         PharmacyDeliveryFeeService.Quote quote = deliveryFeeService.quote(address.getState());
         BigDecimal deliveryFee = quote.fee();
@@ -181,6 +178,20 @@ public class PublicOrderCheckoutService {
         }
         // payment_link wiring lands when conddo-payments is hooked up here too;
         // until then the FE polls /orders/{id}.paymentStatus.
+
+        // Decrement stock + audit-log via StockMovementService so the FE
+        // dashboard sees a SALE_ONLINE row per line and the Redis stream
+        // fires `stock.deducted` / `stock.low` / `stock.out` per Spec v2 §12A.
+        // We still hold the pessimistic locks on each row from the validation
+        // pass above, so there's no race here even with concurrent checkouts.
+        for (int i = 0; i < locked.size(); i++) {
+            Product p = locked.get(i);
+            int qty = requested.get(i).quantity();
+            stockMovementService.recordMovement(p.getId(),
+                    StockMovement.Type.SALE_ONLINE, -qty,
+                    order.getId(), "ORDER",
+                    "Online order " + order.getReference(), null);
+        }
 
         cartService.clear(customerId);
 

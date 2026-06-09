@@ -20,6 +20,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
+        <!-- Redis pub/sub for live stock events (Pharmacy Spec v2 §12A).
+             Auto-config only fires when a connection is configured; the
+             StockEventPublisher fails-safe when the bean is absent. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
         <!-- Web: needed for the tenant servlet filter + shared web types -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
