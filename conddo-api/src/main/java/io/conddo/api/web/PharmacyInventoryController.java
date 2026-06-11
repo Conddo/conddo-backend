@@ -3,6 +3,7 @@ package io.conddo.api.web;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.domain.PharmacyReconciliationItem;
 import io.conddo.core.domain.StockMovement;
+import io.conddo.core.service.BulkStockUploadService;
 import io.conddo.core.service.PharmacyReconciliationService;
 import io.conddo.core.service.PharmacyReconciliationService.CountInput;
 import io.conddo.core.service.PharmacyReconciliationService.Loaded;
@@ -30,6 +31,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -53,11 +57,43 @@ public class PharmacyInventoryController {
 
     private final StockMovementService movementService;
     private final PharmacyReconciliationService reconciliationService;
+    private final BulkStockUploadService bulkUploadService;
 
     public PharmacyInventoryController(StockMovementService movementService,
-                                       PharmacyReconciliationService reconciliationService) {
+                                       PharmacyReconciliationService reconciliationService,
+                                       BulkStockUploadService bulkUploadService) {
         this.movementService = movementService;
         this.reconciliationService = reconciliationService;
+        this.bulkUploadService = bulkUploadService;
+    }
+
+    /**
+     * Ground-truth stock upload. Send the CSV as multipart field
+     * {@code file}; pass {@code dryRun=true} to get the summary
+     * without persisting (preview before commit). See
+     * {@link BulkStockUploadService} for the column contract.
+     */
+    @PostMapping("/bulk-upload")
+    @PreAuthorize(WRITE)
+    public ApiResponse<Map<String, Object>> bulkUpload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(name = "dryRun", defaultValue = "false") boolean dryRun,
+            @AuthenticationPrincipal Jwt jwt) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("file is required");
+        }
+        UUID actingUserId = UUID.fromString(jwt.getSubject());
+        BulkStockUploadService.Summary summary = bulkUploadService.upload(
+                file.getInputStream(), dryRun, actingUserId);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("dryRun", summary.dryRun());
+        resp.put("totalRows", summary.totalRows());
+        resp.put("created", summary.created());
+        resp.put("updated", summary.updated());
+        resp.put("skipped", summary.skipped());
+        resp.put("errors", summary.errors());
+        resp.put("preview", summary.preview());
+        return ApiResponse.ok(resp);
     }
 
     @GetMapping("/movements")

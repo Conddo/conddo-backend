@@ -25,4 +25,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
 
     /** How many products are tagged to a category. RLS-scoped. */
     int countByCategoryId(UUID categoryId);
+
+    /**
+     * Bulk-import lookup. Returns a list rather than Optional because
+     * SKU isn't guaranteed unique per tenant — the upload reports
+     * duplicates as resolvable errors instead of failing the whole file.
+     */
+    List<Product> findBySku(String sku);
 }
