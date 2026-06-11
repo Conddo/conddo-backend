@@ -404,6 +404,31 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Paystack billing — gateway is dormant on this deployment
+     * because CONDDO_PAYSTACK_SECRET_KEY isn't set. 503 with a clean
+     * envelope so the FE billing page can render a "billing is
+     * offline" state instead of a generic 500.
+     */
+    @ExceptionHandler(io.conddo.core.paystack.PaystackGateway.PaystackNotConfiguredException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePaystackNotConfigured(
+            io.conddo.core.paystack.PaystackGateway.PaystackNotConfiguredException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.fail(ApiError.of("PAYSTACK_NOT_CONFIGURED", ex.getMessage())));
+    }
+
+    /**
+     * Paystack billing — the call to Paystack failed (timeout, 5xx,
+     * non-JSON output). 502 with the sanitized cause.
+     */
+    @ExceptionHandler(io.conddo.core.paystack.PaystackGateway.PaystackUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePaystackUnavailable(
+            io.conddo.core.paystack.PaystackGateway.PaystackUnavailableException ex) {
+        LOG.warn("Paystack gateway call failed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.fail(ApiError.of("PAYSTACK_UNAVAILABLE", ex.getMessage())));
+    }
+
+    /**
      * AI Product Assistant (Spec v2 §12C) — gateway is dormant on
      * this deployment because no API key is set. 503 with a clean
      * envelope so the FE can render "AI Assistant is offline" instead

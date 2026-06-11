@@ -64,6 +64,10 @@ public class SecurityConfig {
                         // Ayrshare webhook — the controller verifies HMAC-SHA256
                         // over the raw body; no JWT is forwarded.
                         .requestMatchers(HttpMethod.POST, "/webhooks/ayrshare").permitAll()
+                        // Paystack webhook — controller verifies HMAC-SHA512
+                        // over the raw body; no JWT is forwarded
+                        // (HANDOFF_2026-06-11 §8).
+                        .requestMatchers(HttpMethod.POST, "/api/v1/billing/webhooks/paystack").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

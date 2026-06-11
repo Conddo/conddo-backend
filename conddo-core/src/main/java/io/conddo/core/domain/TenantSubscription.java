@@ -62,6 +62,12 @@ public class TenantSubscription {
     @Column(name = "cancelled_at")
     private OffsetDateTime cancelledAt;
 
+    @Column(name = "paystack_subscription_code", length = 64)
+    private String paystackSubscriptionCode;
+
+    @Column(name = "paystack_customer_code", length = 64)
+    private String paystackCustomerCode;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -69,6 +75,22 @@ public class TenantSubscription {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
+
+    public String getPaystackSubscriptionCode() {
+        return paystackSubscriptionCode;
+    }
+
+    public void setPaystackSubscriptionCode(String paystackSubscriptionCode) {
+        this.paystackSubscriptionCode = paystackSubscriptionCode;
+    }
+
+    public String getPaystackCustomerCode() {
+        return paystackCustomerCode;
+    }
+
+    public void setPaystackCustomerCode(String paystackCustomerCode) {
+        this.paystackCustomerCode = paystackCustomerCode;
+    }
 
     protected TenantSubscription() {
     }
