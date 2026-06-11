@@ -165,6 +165,99 @@ class PharmacyPublicCatalogFlowTest {
     }
 
     /**
+     * PHARMACY_PUBLIC_API_SPEC §2 — forgot + reset round-trip. Email
+     * body capture pulls the opaque "selector.verifier" out of the
+     * mock EmailSender; the new password lets the customer back in
+     * and the same token is rejected on a second attempt.
+     */
+    @Test
+    void forgotResetRoundtripAndUsedTokenIsRefused() throws Exception {
+        String tenantId = signup("ph-reset", "owner@ph-reset.test");
+        String tenantToken = login("ph-reset", "owner@ph-reset.test");
+        String key = regenerateKey(tenantToken);
+        activateSite(tenantId, "ph-reset");
+
+        // Register the customer first.
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/register")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "fullName", "Dee Forgot",
+                                "email", "dee@reset.test",
+                                "password", "originalpw123"))))
+                .andExpect(status().isCreated());
+
+        // Forgot — silent on unknown emails, silent on known emails.
+        // The known one fires an email; capture the body to pull the token.
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/forgot-password")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", "nobody@reset.test"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/forgot-password")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", "dee@reset.test"))))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<String> bodyCap =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(emailSender,
+                        org.mockito.Mockito.timeout(2_000).atLeastOnce())
+                .send(org.mockito.ArgumentMatchers.eq("dee@reset.test"),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        bodyCap.capture());
+        String resetToken = extractResetToken(bodyCap.getValue());
+
+        // Reset → succeeds; customer can login with the new password.
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/reset-password")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "token", resetToken,
+                                "newPassword", "rotatedpw456"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/login")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", "dee@reset.test",
+                                "password", "rotatedpw456"))))
+                .andExpect(status().isOk());
+
+        // Original password no longer works.
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/login")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", "dee@reset.test",
+                                "password", "originalpw123"))))
+                .andExpect(status().isUnauthorized());
+
+        // Re-using the same reset token → 400 INVALID_RESET_TOKEN.
+        mockMvc.perform(post("/api/v1/public/ph-reset/auth/reset-password")
+                        .header("X-Conddo-Site-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "token", resetToken,
+                                "newPassword", "anotherpw789"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_RESET_TOKEN"));
+    }
+
+    private static String extractResetToken(String body) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+                "[\\w-]{8,}\\.[\\w-]{8,}").matcher(body);
+        assertTrue(matcher.find(), "no reset token in email body: " + body);
+        return matcher.group();
+    }
+
+    /**
      * Bug 2 fix from HANDOFF_2026-06-08.md — login with no body must
      * be a structured 400, not a 500. The 500 broke Seb&Bayor's first
      * login-form smoke test on the public-site spec §2.6.

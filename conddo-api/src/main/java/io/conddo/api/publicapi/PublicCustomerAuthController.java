@@ -65,6 +65,30 @@ public class PublicCustomerAuthController {
                 "customer", toPublic(result.customer()));
     }
 
+    /**
+     * PHARMACY_PUBLIC_API_SPEC §2 — kicks off the password reset for a
+     * customer at the bound tenant. Always 200, never reveals whether
+     * the email matches a row (anti-enumeration).
+     */
+    @PostMapping("/forgot-password")
+    public Map<String, Object> forgotPassword(@Valid @RequestBody ForgotPasswordRequest body) {
+        service.forgotPassword(body.email());
+        return Map.of("success", true,
+                "message", "If an account exists for that email, a reset link has been sent.");
+    }
+
+    /**
+     * PHARMACY_PUBLIC_API_SPEC §2 — completes the reset using the
+     * opaque token delivered via email. Invalid / expired / used tokens
+     * all surface as 400 INVALID_RESET_TOKEN with no further detail.
+     */
+    @PostMapping("/reset-password")
+    public Map<String, Object> resetPassword(@Valid @RequestBody ResetPasswordRequest body) {
+        service.resetPassword(body.token(), body.newPassword());
+        return Map.of("success", true,
+                "message", "Password updated. You can now sign in with the new password.");
+    }
+
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> me(HttpServletRequest request) {
         Optional<UUID> customerId = customerIdFromAuthHeader(request);
@@ -118,5 +142,12 @@ public class PublicCustomerAuthController {
     }
 
     public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {
+    }
+
+    public record ForgotPasswordRequest(@NotBlank @Email String email) {
+    }
+
+    public record ResetPasswordRequest(@NotBlank String token,
+                                        @NotBlank @Size(min = 8) String newPassword) {
     }
 }

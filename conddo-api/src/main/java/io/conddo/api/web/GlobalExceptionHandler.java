@@ -326,6 +326,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("INVALID_CREDENTIALS", ex.getMessage())));
     }
 
+    /** Customer password reset — bad / expired / used token. 400 INVALID_RESET_TOKEN. */
+    @ExceptionHandler(PublicCustomerAuthService.InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCustomerResetToken(PublicCustomerAuthService.InvalidPasswordResetTokenException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("INVALID_RESET_TOKEN", ex.getMessage())));
+    }
+
     /** Missing or bad customer JWT on a public-website endpoint — 401 UNAUTHENTICATED. */
     @ExceptionHandler(PublicCustomerAuth.UnauthenticatedCustomerException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnauthenticatedCustomer(PublicCustomerAuth.UnauthenticatedCustomerException ex) {
