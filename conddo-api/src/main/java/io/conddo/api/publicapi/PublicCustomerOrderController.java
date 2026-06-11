@@ -57,7 +57,7 @@ public class PublicCustomerOrderController {
                 .toList();
         CheckoutResult result = checkoutService.checkout(customerId, items,
                 body.addressId(), body.prescriptionId(), body.notes(),
-                body.refillOfferCode());
+                body.refillOfferCode(), body.cashbackRedemption());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "success", true,
                 "order", toCreatedShape(result)));
@@ -85,7 +85,8 @@ public class PublicCustomerOrderController {
             @NotNull UUID addressId,
             String notes,
             UUID prescriptionId,
-            String refillOfferCode) {
+            String refillOfferCode,
+            java.math.BigDecimal cashbackRedemption) {
 
         public record Item(@NotNull UUID productId, @Positive int quantity) {
         }

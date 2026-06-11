@@ -57,6 +57,7 @@ public class PublicOrderCheckoutService {
     private final StockMovementService stockMovementService;
     private final PharmacyDiscountService discountService;
     private final PharmacyRefillOfferService refillOfferService;
+    private final PharmacyLoyaltyService loyaltyService;
     private final ApplicationEventPublisher events;
     private final TenantSession tenantSession;
 
@@ -75,6 +76,7 @@ public class PublicOrderCheckoutService {
                                       StockMovementService stockMovementService,
                                       PharmacyDiscountService discountService,
                                       PharmacyRefillOfferService refillOfferService,
+                                      PharmacyLoyaltyService loyaltyService,
                                       ApplicationEventPublisher events,
                                       TenantSession tenantSession) {
         this.productRepository = productRepository;
@@ -89,6 +91,7 @@ public class PublicOrderCheckoutService {
         this.stockMovementService = stockMovementService;
         this.discountService = discountService;
         this.refillOfferService = refillOfferService;
+        this.loyaltyService = loyaltyService;
         this.events = events;
         this.tenantSession = tenantSession;
     }
@@ -96,7 +99,15 @@ public class PublicOrderCheckoutService {
     @Transactional
     public CheckoutResult checkout(UUID customerId, List<RequestedItem> requested,
                                    UUID addressId, UUID prescriptionId, String notes) {
-        return checkout(customerId, requested, addressId, prescriptionId, notes, null);
+        return checkout(customerId, requested, addressId, prescriptionId, notes, null, null);
+    }
+
+    @Transactional
+    public CheckoutResult checkout(UUID customerId, List<RequestedItem> requested,
+                                   UUID addressId, UUID prescriptionId, String notes,
+                                   String refillOfferCode) {
+        return checkout(customerId, requested, addressId, prescriptionId, notes,
+                refillOfferCode, null);
     }
 
     /**
@@ -111,7 +122,7 @@ public class PublicOrderCheckoutService {
     @Transactional
     public CheckoutResult checkout(UUID customerId, List<RequestedItem> requested,
                                    UUID addressId, UUID prescriptionId, String notes,
-                                   String refillOfferCode) {
+                                   String refillOfferCode, BigDecimal cashbackRedemption) {
         if (requested == null || requested.isEmpty()) {
             throw new IllegalArgumentException("items is required");
         }
@@ -200,6 +211,20 @@ public class PublicOrderCheckoutService {
         BigDecimal deliveryFee = quote.fee();
         BigDecimal total = subtotal.add(deliveryFee);
 
+        // Roadmap Beta 1 — cashback redemption. Validate against the
+        // loyalty config (active, min, balance) BEFORE we create the
+        // order; if it would zero out or go negative, refuse the
+        // checkout entirely (spec is explicit about this).
+        BigDecimal cashbackApplied = BigDecimal.ZERO;
+        if (cashbackRedemption != null && cashbackRedemption.signum() > 0) {
+            if (cashbackRedemption.compareTo(total) >= 0) {
+                throw new IllegalArgumentException(
+                        "Cashback redemption can't equal or exceed the order total.");
+            }
+            cashbackApplied = cashbackRedemption;
+            total = total.subtract(cashbackApplied);
+        }
+
         String customerNotes = notes == null || notes.isBlank() ? null : "Notes: " + notes;
         Order order = orderService.create(
                 customer.getId(), customer.getFullName(),
@@ -233,6 +258,15 @@ public class PublicOrderCheckoutService {
         }
 
         cartService.clear(customerId);
+
+        // Roadmap Beta 1 — deduct the cashback redemption from the wallet
+        // now that the order has an id. Any failure here (wallet missing,
+        // balance shrunk under us, config flipped off) throws and rolls
+        // back the whole order. The pre-check above caught the simple
+        // cases; this is defence-in-depth.
+        if (cashbackApplied.signum() > 0) {
+            loyaltyService.redeem(customerId, cashbackApplied, order.getId());
+        }
 
         // §12E — redeem the refill-offer claim against the order now that
         // it has an id. We only call this when the code was provided AND
