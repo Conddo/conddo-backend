@@ -1186,10 +1186,18 @@ class AuthFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("inactive"));
 
-        // The role catalogue lists all 5 sub-roles; duplicate invites are rejected.
+        // The role catalogue lists all 5 sub-roles + the moduleAccess map FE consumes;
+        // duplicate invites are rejected.
         mockMvc.perform(get("/api/v1/staff/roles").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(5));
+                .andExpect(jsonPath("$.data.length()").value(5))
+                .andExpect(jsonPath("$.data[0].role").value("MANAGER"))
+                .andExpect(jsonPath("$.data[0].moduleAccess.inventory").value("write"))
+                .andExpect(jsonPath("$.data[0].moduleAccess.staff").doesNotExist())
+                .andExpect(jsonPath("$.data[2].role").value("CASHIER"))
+                .andExpect(jsonPath("$.data[2].moduleAccess.pos").value("write"))
+                .andExpect(jsonPath("$.data[2].moduleAccess.inventory").value("read"))
+                .andExpect(jsonPath("$.data[2].moduleAccess.emr").doesNotExist());
         mockMvc.perform(post("/api/v1/staff/invite").header(HttpHeaders.AUTHORIZATION, bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("email", "mary@staff.test", "staffRole", "MANAGER"))))

@@ -1,6 +1,7 @@
 package io.conddo.core.service;
 
 import io.conddo.core.auth.PasswordHasher;
+import io.conddo.core.auth.StaffAccessMatrix;
 import io.conddo.core.auth.StaffInviteService;
 import io.conddo.core.common.NotFoundException;
 import io.conddo.core.domain.AuditLog;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -85,27 +87,35 @@ public class StaffService {
     }
 
     /**
-     * Sub-role catalogue (HANDOFF_2026-06-12 §1). Matches FE
-     * STAFF_ROLE_CATALOGUE in lib/api/staff.ts. BE is authoritative on
-     * the 403; FE catalogue is a UI mirror.
+     * Sub-role catalogue (HANDOFF_2026-06-12 §1 + reply Q1). Each
+     * entry carries both the human-readable {@code permissions}
+     * lines (used by the invite email and the FE role card) and the
+     * machine-readable {@code moduleAccess} map FE consumes for nav
+     * decisions. Modules with NONE access are omitted from the map
+     * (FE treats omitted as none).
      */
     public List<RoleDef> roles() {
         return List.of(
                 new RoleDef("MANAGER", "Manager",
                         List.of("Everything except billing + staff invites",
-                                "Inventory, sales, orders, customers, analytics")),
+                                "Inventory, sales, orders, customers, analytics"),
+                        StaffAccessMatrix.modulesFor("MANAGER")),
                 new RoleDef("PHARMACIST", "Pharmacist",
                         List.of("Clinical access: EMR, prescriptions, consultations",
-                                "Read-only inventory, orders, customers, analytics")),
+                                "Read-only inventory, orders, customers, analytics"),
+                        StaffAccessMatrix.modulesFor("PHARMACIST")),
                 new RoleDef("CASHIER", "Cashier",
                         List.of("POS sales (open shifts, run sales, take payments)",
-                                "Read-only customers, orders, payments, inventory")),
+                                "Read-only customers, orders, payments, inventory"),
+                        StaffAccessMatrix.modulesFor("CASHIER")),
                 new RoleDef("STOCK_MANAGER", "Stock Manager",
                         List.of("Inventory: restock, reconciliation, bulk upload, movement log",
-                                "Read-only orders, customers, analytics")),
+                                "Read-only orders, customers, analytics"),
+                        StaffAccessMatrix.modulesFor("STOCK_MANAGER")),
                 new RoleDef("BOOKKEEPER", "Bookkeeper",
                         List.of("Read-only orders, payments, analytics, customers",
-                                "CSV exports for reconciliation")));
+                                "CSV exports for reconciliation"),
+                        StaffAccessMatrix.modulesFor("BOOKKEEPER")));
     }
 
     // ----- internals ----------------------------------------------------------
@@ -115,8 +125,14 @@ public class StaffService {
                 .orElseThrow(() -> new NotFoundException("Staff member not found"));
     }
 
-    /** A sub-role plus a human-readable access summary. */
-    public record RoleDef(String role, String label, List<String> permissions) {
+    /**
+     * A sub-role catalogue entry. {@code permissions} is the human
+     * source of truth (invite email + role card copy);
+     * {@code moduleAccess} is the machine-readable map FE consumes
+     * for nav gating (HANDOFF_2026-06-12 reply Q1).
+     */
+    public record RoleDef(String role, String label, List<String> permissions,
+                          Map<String, String> moduleAccess) {
     }
 
     public static class OwnerProtectedException extends RuntimeException {
