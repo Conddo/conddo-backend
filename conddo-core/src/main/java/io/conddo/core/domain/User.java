@@ -85,6 +85,22 @@ public class User implements LockableAccount {
     @Column(name = "google_linked_at")
     private OffsetDateTime googleLinkedAt;
 
+    // ----- Staff invite token (HANDOFF_2026-06-12 §5, V49) -------------------
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_INVITED = "INVITED";
+
+    @Column(nullable = false, length = 20)
+    private String status = STATUS_ACTIVE;
+
+    @Column(name = "invite_token_hash", length = 80)
+    private String inviteTokenHash;
+
+    @Column(name = "invite_token_expires_at")
+    private OffsetDateTime inviteTokenExpiresAt;
+
+    @Column(name = "invited_by_user_id")
+    private UUID invitedByUserId;
+
     protected User() {
     }
 
@@ -147,6 +163,47 @@ public class User implements LockableAccount {
 
     public String getStaffRole() {
         return staffRole;
+    }
+
+    public void setFullName(String fullName) {
+        if (fullName != null && !fullName.isBlank()) {
+            this.fullName = fullName;
+        }
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getInviteTokenHash() {
+        return inviteTokenHash;
+    }
+
+    public OffsetDateTime getInviteTokenExpiresAt() {
+        return inviteTokenExpiresAt;
+    }
+
+    public UUID getInvitedByUserId() {
+        return invitedByUserId;
+    }
+
+    /** Stamp this user as a pending invitee — called when the invite is created. */
+    public void markInvited(String tokenHash, OffsetDateTime expiresAt, UUID invitedByUserId) {
+        this.status = STATUS_INVITED;
+        this.inviteTokenHash = tokenHash;
+        this.inviteTokenExpiresAt = expiresAt;
+        this.invitedByUserId = invitedByUserId;
+    }
+
+    /** Finalise the invite — sets the real password and flips to ACTIVE. */
+    public void acceptInvite(String passwordHash, String fullName) {
+        this.passwordHash = passwordHash;
+        this.status = STATUS_ACTIVE;
+        this.inviteTokenHash = null;
+        this.inviteTokenExpiresAt = null;
+        if (fullName != null && !fullName.isBlank()) {
+            this.fullName = fullName;
+        }
     }
 
     /** Activates or deactivates the account (§11.10). A deactivated user cannot log in. */

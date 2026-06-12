@@ -1162,36 +1162,37 @@ class AuthFlowTest {
                 .andExpect(jsonPath("$.data[0].role").value("TENANT_ADMIN"))
                 .andExpect(jsonPath("$.data[0].status").value("active"));
 
-        // Invite a staff member -> created as "invited"; an invite email is sent.
+        // Invite a staff member -> created as "invited" with the sub-role on file; an invite email is sent.
         MvcResult invited = mockMvc.perform(post("/api/v1/staff/invite").header(HttpHeaders.AUTHORIZATION, bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("email", "mary@staff.test", "role", "STAFF"))))
+                        .content(json(Map.of("email", "mary@staff.test", "staffRole", "MANAGER"))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.status").value("invited"))
                 .andExpect(jsonPath("$.data.role").value("STAFF"))
+                .andExpect(jsonPath("$.data.staffRole").value("MANAGER"))
                 .andReturn();
         String staffId = objectMapper.readTree(invited.getResponse().getContentAsString())
                 .path("data").path("id").asText();
         verify(emailSender).send(eq("mary@staff.test"), anyString(), anyString());
 
-        // Promote to admin, then deactivate.
+        // Change sub-role to PHARMACIST, then deactivate.
         mockMvc.perform(patch("/api/v1/staff/" + staffId).header(HttpHeaders.AUTHORIZATION, bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("role", "TENANT_ADMIN"))))
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("staffRole", "PHARMACIST"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.role").value("TENANT_ADMIN"));
+                .andExpect(jsonPath("$.data.staffRole").value("PHARMACIST"));
         mockMvc.perform(patch("/api/v1/staff/" + staffId).header(HttpHeaders.AUTHORIZATION, bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("active", false))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("inactive"));
 
-        // The role catalogue is available, and duplicate invites are rejected.
+        // The role catalogue lists all 5 sub-roles; duplicate invites are rejected.
         mockMvc.perform(get("/api/v1/staff/roles").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(2));
+                .andExpect(jsonPath("$.data.length()").value(5));
         mockMvc.perform(post("/api/v1/staff/invite").header(HttpHeaders.AUTHORIZATION, bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("email", "mary@staff.test", "role", "STAFF"))))
+                        .content(json(Map.of("email", "mary@staff.test", "staffRole", "MANAGER"))))
                 .andExpect(status().isConflict());
     }
 

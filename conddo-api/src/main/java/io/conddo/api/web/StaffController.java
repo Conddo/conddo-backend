@@ -11,6 +11,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,8 +46,11 @@ public class StaffController {
     }
 
     @PostMapping("/invite")
-    public ResponseEntity<ApiResponse<StaffRow>> invite(@Valid @RequestBody InviteStaffRequest request) {
-        StaffRow body = StaffRow.from(staffService.invite(request.email(), request.role()));
+    public ResponseEntity<ApiResponse<StaffRow>> invite(@Valid @RequestBody InviteStaffRequest request,
+                                                        @AuthenticationPrincipal Jwt jwt) {
+        UUID invitedByUserId = UUID.fromString(jwt.getSubject());
+        StaffRow body = StaffRow.from(staffService.invite(
+                request.email(), request.staffRole(), request.fullName(), invitedByUserId));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
     }
 
@@ -61,7 +66,8 @@ public class StaffController {
 
     @PatchMapping("/{id}")
     public ApiResponse<StaffRow> update(@PathVariable UUID id, @RequestBody UpdateStaffRequest request) {
-        return ApiResponse.ok(StaffRow.from(staffService.update(id, request.role(), request.active())));
+        return ApiResponse.ok(StaffRow.from(
+                staffService.update(id, request.staffRole(), request.active())));
     }
 
     @PostMapping("/{id}/resend-invite")

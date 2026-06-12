@@ -354,6 +354,45 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("UNAUTHENTICATED", ex.getMessage())));
     }
 
+    // ----- Staff invite + access (HANDOFF_2026-06-12) -----------------------
+
+    @ExceptionHandler(io.conddo.core.auth.StaffInviteService.EmailAlreadyInUseException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailAlreadyInUse(
+            io.conddo.core.auth.StaffInviteService.EmailAlreadyInUseException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("EMAIL_ALREADY_REGISTERED", ex.getMessage())));
+    }
+
+    @ExceptionHandler(io.conddo.core.auth.StaffInviteService.PlanLimitReachedException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePlanLimitReached(
+            io.conddo.core.auth.StaffInviteService.PlanLimitReachedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail(ApiError.of("PLAN_LIMIT_REACHED", ex.getMessage(),
+                        java.util.List.of(new ApiError.FieldError("limit",
+                                String.valueOf(ex.getLimit()))))));
+    }
+
+    @ExceptionHandler(io.conddo.core.auth.StaffInviteService.InviteInvalidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInviteInvalid(
+            io.conddo.core.auth.StaffInviteService.InviteInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.fail(ApiError.of("INVITE_INVALID", ex.getMessage())));
+    }
+
+    @ExceptionHandler(io.conddo.core.auth.StaffInviteService.InviteExpiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInviteExpired(
+            io.conddo.core.auth.StaffInviteService.InviteExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("INVITE_EXPIRED", ex.getMessage())));
+    }
+
+    @ExceptionHandler(io.conddo.core.service.StaffService.OwnerProtectedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOwnerProtected(
+            io.conddo.core.service.StaffService.OwnerProtectedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("OWNER_PROTECTED", ex.getMessage())));
+    }
+
     // ----- POS Phase 1 ------------------------------------------------------
 
     @ExceptionHandler(io.conddo.core.service.PosSessionService.SessionAlreadyOpenException.class)
