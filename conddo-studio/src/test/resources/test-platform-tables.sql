@@ -56,6 +56,22 @@ CREATE TABLE IF NOT EXISTS public.tenant_sites (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_sites_tenant
     ON public.tenant_sites (tenant_id);
 
+-- Beta-access review queue (HANDOFF_2026-06-12b). Studio admin lists +
+-- grants/revokes per-tenant flags through PlatformFeatureFlagController.
+-- Real platform deploys (conddo-api V39) own the production schema.
+CREATE TABLE IF NOT EXISTS public.tenant_feature_flags (
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID         NOT NULL REFERENCES public.tenants (id),
+    feature_key     VARCHAR(100) NOT NULL,
+    status          VARCHAR(20)  NOT NULL DEFAULT 'coming_soon',
+    interest        BOOLEAN      NOT NULL DEFAULT false,
+    enabled         BOOLEAN      NOT NULL DEFAULT false,
+    interest_at     TIMESTAMPTZ,
+    granted_at      TIMESTAMPTZ,
+    granted_by      UUID,
+    UNIQUE (tenant_id, feature_key)
+);
+
 -- Phase 13b's mutators revoke refresh tokens for suspended tenants and
 -- deactivated users. The Studio service writes UPDATEs against this table.
 CREATE TABLE IF NOT EXISTS public.refresh_tokens (
