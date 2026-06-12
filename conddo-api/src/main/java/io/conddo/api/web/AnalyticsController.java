@@ -23,7 +23,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/v1/analytics")
-@PreAuthorize("hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')")
+@PreAuthorize("@staffAccess.canRead('analytics')")
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;

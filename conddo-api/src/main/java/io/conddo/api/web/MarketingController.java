@@ -41,8 +41,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/marketing")
 public class MarketingController {
 
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+    private static final String READ = "@staffAccess.canRead('marketing')";
+    private static final String WRITE = "@staffAccess.canWrite('marketing')";
 
     private final MarketingService marketingService;
 

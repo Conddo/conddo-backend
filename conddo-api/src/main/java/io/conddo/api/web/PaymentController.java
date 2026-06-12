@@ -28,8 +28,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/payments")
 public class PaymentController {
 
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+    private static final String READ = "@staffAccess.canRead('payments')";
+    private static final String WRITE = "@staffAccess.canWrite('payments')";
 
     private final PaymentsService paymentsService;
 

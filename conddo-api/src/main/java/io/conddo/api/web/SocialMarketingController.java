@@ -39,7 +39,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/marketing/social")
-@PreAuthorize("hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')")
+@PreAuthorize("@staffAccess.canRead('marketing')")
 @RequiresFeature("social_scheduler")
 public class SocialMarketingController {
 

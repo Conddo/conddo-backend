@@ -37,8 +37,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/pharmacy/reminders")
 public class PharmacyReminderController {
 
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
+    private static final String READ = "@staffAccess.canRead('followups')";
+    private static final String WRITE = "@staffAccess.canWrite('followups')";
 
     private final PharmacyReminderService service;
 

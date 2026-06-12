@@ -31,7 +31,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/pharmacy/ai")
 public class PharmacyAiAssistantController {
 
-    private static final String STAFF = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
+    private static final String STAFF = "@staffAccess.canRead('consultations')";
 
     private final PharmacyAiAssistantService service;
 

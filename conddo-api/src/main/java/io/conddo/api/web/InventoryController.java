@@ -39,8 +39,8 @@ import java.util.UUID;
 @RequestMapping("/api/v1/inventory")
 public class InventoryController {
 
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+    private static final String READ = "@staffAccess.canRead('inventory')";
+    private static final String WRITE = "@staffAccess.canWrite('inventory')";
 
     private final InventoryService inventoryService;
 

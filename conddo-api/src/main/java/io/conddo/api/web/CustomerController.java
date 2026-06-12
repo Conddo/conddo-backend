@@ -47,10 +47,10 @@ import java.util.UUID;
 @RequestMapping("/api/v1/customers")
 public class CustomerController {
 
-    /** Any staff role may read the CRM. */
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    /** Writes default to TENANT_ADMIN (or an acting SUPER_ADMIN). */
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+    /** Customers reads — every sub-role per the StaffAccess matrix. */
+    private static final String READ = "@staffAccess.canRead('customers')";
+    /** Customers writes — MANAGER + owner per the matrix. */
+    private static final String WRITE = "@staffAccess.canWrite('customers')";
 
     private final CustomerService customerService;
     private final OrderService orderService;

@@ -37,7 +37,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/pharmacy/followups")
 @PreAuthorize("@featureFlagGuard.requiresFlag('followup_workflow') "
-        + "and hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')")
+        + "and @staffAccess.canRead('followups')")
 public class PharmacyFollowupController {
 
     private final PharmacyFollowupService service;

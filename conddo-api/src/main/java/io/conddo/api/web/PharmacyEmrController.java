@@ -35,8 +35,10 @@ import java.util.UUID;
 
 /**
  * Pharmacy Roadmap Beta 4 — EMR surface. Feature-gated by
- * {@code emr_basic}. Reads are TENANT_ADMIN + STAFF + SUPER_ADMIN per
- * the FE handoff §4 mapping; writes are TENANT_ADMIN-only.
+ * {@code emr_basic}. Per HANDOFF_2026-06-12 §4: reads gated by
+ * {@code @staffAccess.canRead('emr')}; writes by
+ * {@code @staffAccess.canWrite('emr')} which resolves to
+ * PHARMACIST + MANAGER + owner.
  *
  * <p>Notes are immutable — there is no PUT or DELETE on a single
  * note. Documents have a list + upload but no rewrite either; spec
@@ -44,12 +46,11 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/pharmacy/emr")
-@PreAuthorize("@featureFlagGuard.requiresFlag('emr_basic') "
-        + "and hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')")
+@PreAuthorize("@featureFlagGuard.requiresFlag('emr_basic') and @staffAccess.canRead('emr')")
 public class PharmacyEmrController {
 
     private static final String WRITE = "@featureFlagGuard.requiresFlag('emr_basic') "
-            + "and hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+            + "and @staffAccess.canWrite('emr')";
 
     private final PharmacyEmrService service;
 

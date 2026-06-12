@@ -38,11 +38,11 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/pharmacy/programs")
 @PreAuthorize("@featureFlagGuard.requiresFlag('drug_programs') "
-        + "and hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')")
+        + "and @staffAccess.canRead('loyalty')")
 public class PharmacyProgramController {
 
     private static final String ADMIN = "@featureFlagGuard.requiresFlag('drug_programs') "
-            + "and hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+            + "and @staffAccess.ownerOnly()";
 
     private final PharmacyProgramService service;
 

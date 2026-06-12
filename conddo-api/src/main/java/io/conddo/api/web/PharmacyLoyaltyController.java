@@ -29,7 +29,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/pharmacy/loyalty")
 @PreAuthorize("@featureFlagGuard.requiresFlag('cashback_loyalty') "
-        + "and hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')")
+        + "and @staffAccess.canRead('loyalty')")
 public class PharmacyLoyaltyController {
 
     private final PharmacyLoyaltyService service;
@@ -47,7 +47,7 @@ public class PharmacyLoyaltyController {
 
     @PutMapping("/config")
     @PreAuthorize("@featureFlagGuard.requiresFlag('cashback_loyalty') "
-            + "and hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')")
+            + "and @staffAccess.canWrite('loyalty')")
     public ApiResponse<Map<String, Object>> upsertConfig(
             @Valid @RequestBody ConfigInput body) {
         PharmacyLoyaltyConfig saved = service.upsertConfig(

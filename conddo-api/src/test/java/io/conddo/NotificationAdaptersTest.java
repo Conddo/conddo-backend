@@ -28,7 +28,7 @@ class NotificationAdaptersTest {
         return new NotificationProperties(
                 new NotificationProperties.Sms("brevo", "https://api.brevo.com", "sms-key-123", "Conddo"),
                 new NotificationProperties.Email("resend", "https://api.resend.com", "re_test_key",
-                        emailFrom, "Conddo", null));
+                        emailFrom, "Conddo", null, null));
     }
 
     @Test

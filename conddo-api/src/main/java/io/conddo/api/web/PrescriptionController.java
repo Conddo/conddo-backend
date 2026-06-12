@@ -38,9 +38,9 @@ import java.util.UUID;
 @RequestMapping("/api/v1/prescriptions")
 public class PrescriptionController {
 
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String ADMIN_ONLY = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+    private static final String READ = "@staffAccess.canRead('prescriptions')";
+    private static final String WRITE = "@staffAccess.canWrite('prescriptions')";
+    private static final String ADMIN_ONLY = "@staffAccess.ownerOnly()";
     private static final int MAX_PAGE_SIZE = 100;
 
     private final PrescriptionService service;

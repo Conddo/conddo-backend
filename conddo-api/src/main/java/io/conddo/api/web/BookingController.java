@@ -43,8 +43,8 @@ import java.util.UUID;
         requiredPlan = "Growth", requiredPlanPrice = 45000)
 public class BookingController {
 
-    private static final String READ = "hasAnyRole('TENANT_ADMIN','STAFF','SUPER_ADMIN')";
-    private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
+    private static final String READ = "@staffAccess.canRead('orders')";
+    private static final String WRITE = "@staffAccess.canWrite('orders')";
 
     private final BookingService bookingService;
 
