@@ -108,4 +108,15 @@ public class Staff {
     public void setActive(boolean active) {
         this.active = active;
     }
+
+    /** Overwrite the stored password hash. Caller is responsible for hashing
+     *  with the live PasswordEncoder before passing in — this method does no
+     *  hashing itself. Used by the bootstrap-by-env upsert path so the
+     *  platform owner can recover access without DB shell. */
+    public void resetPasswordHash(String newHash) {
+        if (newHash == null || newHash.isBlank()) {
+            throw new IllegalArgumentException("Password hash cannot be blank");
+        }
+        this.passwordHash = newHash;
+    }
 }

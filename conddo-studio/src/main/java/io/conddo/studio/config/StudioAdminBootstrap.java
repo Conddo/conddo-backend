@@ -1,6 +1,5 @@
 package io.conddo.studio.config;
 
-import io.conddo.studio.repository.StaffRepository;
 import io.conddo.studio.staff.StaffService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,44 +8,47 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
 /**
- * Plants the first ADMIN staff member at startup so the team has a way in.
+ * Plants — and keeps — the platform owner's ADMIN staff member at startup so
+ * the team always has a way in.
  *
- * <p>Solves the chicken-and-egg in the staff lifecycle: every staff-creation
- * route requires an authenticated ADMIN, but a fresh deploy has no staff. This
- * bean fills that gap exactly once.
- *
- * <p>Runs only when:
+ * <p>Runs whenever {@code STUDIO_BOOTSTRAP_ADMIN_EMAIL} and
+ * {@code STUDIO_BOOTSTRAP_ADMIN_PASSWORD} are both set:
  * <ul>
- *   <li>{@code STUDIO_BOOTSTRAP_ADMIN_EMAIL} and {@code STUDIO_BOOTSTRAP_ADMIN_PASSWORD} are set, AND</li>
- *   <li>{@code studio.staff} is empty (idempotent — already-bootstrapped envs are skipped).</li>
+ *   <li>If no staff row exists with that email → creates them as ADMIN.</li>
+ *   <li>If a row exists → resets the password to match the env var, force-
+ *       sets role back to ADMIN, and marks the account active. Idempotent.</li>
  * </ul>
  *
- * <p>Uses {@link StaffService#create} so the password is hashed by the live
- * {@code BCryptPasswordEncoder(12)} bean — guaranteed to match what
- * {@code StudioAuthService.login} checks. Once you've signed in, clear the env
- * vars and rotate the password from the Staff page.
+ * <p>This makes the env-var pair a permanent recovery path — the platform
+ * owner keeps the credentials in their password manager and the account is
+ * guaranteed to honour them after every redeploy. Clearing the env vars
+ * turns the bootstrap back into a no-op without affecting the existing row.
+ *
+ * <p>Anyone with Render dashboard access can therefore reset this admin's
+ * password by changing the env var. That is by design — the same access
+ * already implies root over the deploy — and is the same trust boundary
+ * Django's {@code createsuperuser} pattern relies on.
+ *
+ * <p>Password hashing goes through the live {@code BCryptPasswordEncoder(12)}
+ * bean via {@link StaffService#upsertAdmin}, guaranteed to match what
+ * {@link io.conddo.studio.auth.StudioAuthService#login} verifies against.
  */
 @Component
 public class StudioAdminBootstrap implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(StudioAdminBootstrap.class);
 
-    private final StaffRepository staffRepository;
     private final StaffService staffService;
     private final String email;
     private final String password;
     private final String fullName;
 
     public StudioAdminBootstrap(
-            StaffRepository staffRepository,
             StaffService staffService,
             @Value("${studio.bootstrap.admin.email:}") String email,
             @Value("${studio.bootstrap.admin.password:}") String password,
-            @Value("${studio.bootstrap.admin.name:Studio Admin}") String fullName) {
-        this.staffRepository = staffRepository;
+            @Value("${studio.bootstrap.admin.name:Platform Admin}") String fullName) {
         this.staffService = staffService;
         this.email = email;
         this.password = password;
@@ -63,12 +65,8 @@ public class StudioAdminBootstrap implements ApplicationRunner {
             log.warn("Studio admin bootstrap skipped — STUDIO_BOOTSTRAP_ADMIN_PASSWORD must be at least 8 characters.");
             return;
         }
-        if (staffRepository.count() > 0) {
-            log.info("Studio admin bootstrap skipped — staff table already populated.");
-            return;
-        }
-        staffService.create(email.trim(), fullName.trim(), "ADMIN", List.of(), password);
-        log.info("Studio admin bootstrap created ADMIN <{}>. " +
-                "Remove STUDIO_BOOTSTRAP_ADMIN_* env vars and rotate the password from the Staff page.", email);
+        staffService.upsertAdmin(email.trim(), fullName.trim(), password);
+        log.info("Studio admin bootstrap upserted ADMIN <{}>. " +
+                "Env vars stay set as a permanent recovery path; rotate by changing the env var.", email);
     }
 }
