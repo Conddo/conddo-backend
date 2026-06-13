@@ -448,6 +448,13 @@ public class GlobalExceptionHandler {
                                 String.valueOf(ex.getOutstanding()))))));
     }
 
+    @ExceptionHandler(io.conddo.core.service.ModuleSuggestionService.SuggestionUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSuggestionUnavailable(
+            io.conddo.core.service.ModuleSuggestionService.SuggestionUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.fail(ApiError.of("AI_SUGGESTION_FAILED", ex.getMessage())));
+    }
+
     @ExceptionHandler(io.conddo.core.service.PosSaleService.InsufficientStockException.class)
     public ResponseEntity<ApiResponse<Void>> handlePosInsufficientStock(
             io.conddo.core.service.PosSaleService.InsufficientStockException ex) {
