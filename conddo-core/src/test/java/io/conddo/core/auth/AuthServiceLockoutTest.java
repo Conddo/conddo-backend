@@ -64,9 +64,13 @@ class AuthServiceLockoutTest {
         // CORRECT password verifies. Everything else returns Mockito's default false.
         when(hasher.hash(anyString())).thenReturn("HASH");
         when(hasher.matches(eq(CORRECT), anyString())).thenReturn(true);
+        io.conddo.core.service.ModuleResolver moduleResolver =
+                mock(io.conddo.core.service.ModuleResolver.class);
+        when(moduleResolver.resolve(anyString(), anyString())).thenReturn(java.util.List.of());
         authService = new AuthService(tenantRepository, userRepository, tenantSession, hasher,
                 jwtService, refreshTokenService, new LockoutPolicy(props), auditService,
-                new io.conddo.core.registry.VerticalToolMatrix(new io.conddo.core.registry.VerticalDataLoader()), props,
+                new io.conddo.core.registry.VerticalToolMatrix(new io.conddo.core.registry.VerticalDataLoader()),
+                moduleResolver, props,
                 new DormantGoogleIdTokenVerifier(), clock);
     }
 

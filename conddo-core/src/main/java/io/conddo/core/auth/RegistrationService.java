@@ -45,6 +45,7 @@ public class RegistrationService {
     private final RefreshTokenService refreshTokenService;
     private final AuditService auditService;
     private final VerticalToolMatrix toolMatrix;
+    private final io.conddo.core.service.ModuleResolver moduleResolver;
     private final AuthProperties authProperties;
     private final OtpProperties otp;
     private final GoogleIdTokenVerifier googleVerifier;
@@ -58,6 +59,7 @@ public class RegistrationService {
                                NotificationService notificationService, TenantService tenantService,
                                JwtService jwtService, RefreshTokenService refreshTokenService,
                                AuditService auditService, VerticalToolMatrix toolMatrix,
+                               io.conddo.core.service.ModuleResolver moduleResolver,
                                AuthProperties authProperties, OtpProperties otp,
                                GoogleIdTokenVerifier googleVerifier, UserRepository userRepository,
                                TenantSession tenantSession, Clock clock) {
@@ -69,6 +71,7 @@ public class RegistrationService {
         this.refreshTokenService = refreshTokenService;
         this.auditService = auditService;
         this.toolMatrix = toolMatrix;
+        this.moduleResolver = moduleResolver;
         this.authProperties = authProperties;
         this.otp = otp;
         this.googleVerifier = googleVerifier;
@@ -204,7 +207,7 @@ public class RegistrationService {
         String accessToken = jwtService.issueAccessToken(admin.getId(), admin.getTenantId(), admin.getRole(),
                 admin.getStaffRole(),
                 tenant.getVerticalId(), toolMatrix.normalizePlan(tenant.getPlanId()),
-                toolMatrix.resolve(tenant.getVerticalId(), tenant.getPlanId()));
+                moduleResolver.resolve(tenant.getVerticalId(), tenant.getPlanId()));
         String refreshToken = refreshTokenService.issue(admin.getId(), admin.getTenantId());
         return new AuthResult(accessToken, jwtService.accessTokenTtl(), refreshToken,
                 authProperties.refreshTokenTtl(), admin.getId(), admin.getRole());

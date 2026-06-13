@@ -65,9 +65,14 @@ class AuthServiceGoogleTest {
                 .thenReturn("access.jwt");
         when(jwtService.accessTokenTtl()).thenReturn(Duration.ofMinutes(15));
         when(refreshTokenService.issue(any(), any())).thenReturn("refresh-raw");
+        io.conddo.core.service.ModuleResolver moduleResolver =
+                org.mockito.Mockito.mock(io.conddo.core.service.ModuleResolver.class);
+        org.mockito.Mockito.when(moduleResolver.resolve(anyString(), anyString()))
+                .thenReturn(java.util.List.of());
         authService = new AuthService(tenantRepository, userRepository, tenantSession, hasher,
                 jwtService, refreshTokenService, new LockoutPolicy(props), auditService,
-                new VerticalToolMatrix(new io.conddo.core.registry.VerticalDataLoader()), props, googleVerifier, clock);
+                new VerticalToolMatrix(new io.conddo.core.registry.VerticalDataLoader()),
+                moduleResolver, props, googleVerifier, clock);
     }
 
     @Test

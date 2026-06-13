@@ -40,6 +40,7 @@ public class AuthService {
     private final LockoutPolicy lockoutPolicy;
     private final AuditService auditService;
     private final VerticalToolMatrix toolMatrix;
+    private final io.conddo.core.service.ModuleResolver moduleResolver;
     private final AuthProperties properties;
     private final GoogleIdTokenVerifier googleVerifier;
     private final Clock clock;
@@ -51,6 +52,7 @@ public class AuthService {
                        TenantSession tenantSession, PasswordHasher passwordHasher, JwtService jwtService,
                        RefreshTokenService refreshTokenService, LockoutPolicy lockoutPolicy,
                        AuditService auditService, VerticalToolMatrix toolMatrix,
+                       io.conddo.core.service.ModuleResolver moduleResolver,
                        AuthProperties properties, GoogleIdTokenVerifier googleVerifier, Clock clock) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
@@ -61,6 +63,7 @@ public class AuthService {
         this.lockoutPolicy = lockoutPolicy;
         this.auditService = auditService;
         this.toolMatrix = toolMatrix;
+        this.moduleResolver = moduleResolver;
         this.properties = properties;
         this.googleVerifier = googleVerifier;
         this.clock = clock;
@@ -72,7 +75,7 @@ public class AuthService {
         return jwtService.issueAccessToken(user.getId(), user.getTenantId(), user.getRole(),
                 user.getStaffRole(),
                 tenant.getVerticalId(), toolMatrix.normalizePlan(tenant.getPlanId()),
-                toolMatrix.resolve(tenant.getVerticalId(), tenant.getPlanId()));
+                moduleResolver.resolve(tenant.getVerticalId(), tenant.getPlanId()));
     }
 
     /**
