@@ -356,9 +356,9 @@ public class GlobalExceptionHandler {
 
     // ----- Staff invite + access (HANDOFF_2026-06-12) -----------------------
 
-    @ExceptionHandler(io.conddo.core.auth.StaffInviteService.EmailAlreadyInUseException.class)
+    @ExceptionHandler(io.conddo.core.auth.EmailAlreadyInUseException.class)
     public ResponseEntity<ApiResponse<Void>> handleEmailAlreadyInUse(
-            io.conddo.core.auth.StaffInviteService.EmailAlreadyInUseException ex) {
+            io.conddo.core.auth.EmailAlreadyInUseException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.fail(ApiError.of("EMAIL_ALREADY_REGISTERED", ex.getMessage())));
     }

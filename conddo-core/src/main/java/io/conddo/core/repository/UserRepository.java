@@ -36,4 +36,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Query(value = "SELECT * FROM users WHERE invite_token_hash = :tokenHash", nativeQuery = true)
     Optional<User> findByInviteTokenHashCrossTenant(@Param("tokenHash") String tokenHash);
+
+    /**
+     * Cross-tenant email lookup — used at signup + invite to enforce
+     * the global email UNIQUE (V50). Bypasses RLS via a native query
+     * since signup runs before any tenant is bound.
+     */
+    @Query(value = "SELECT * FROM users WHERE email = :email LIMIT 1", nativeQuery = true)
+    Optional<User> findFirstByEmailCrossTenant(@Param("email") String email);
 }

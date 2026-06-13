@@ -98,9 +98,17 @@ public class StaffInviteService {
         tenantSession.bind();
         UUID tenantId = TenantContext.require();
         String resolvedRole = normaliseStaffRole(staffRole);
-        if (userRepository.findByEmail(email).isPresent()) {
+        // Cross-tenant check — V50 enforces a global UNIQUE on
+        // users.email, so the DB would reject either way, but we
+        // surface the friendly 409 early. Clear the carve-out
+        // immediately after so the plan-limit count below stays
+        // tenant-scoped.
+        tenantSession.bindCrossTenant();
+        if (userRepository.findFirstByEmailCrossTenant(email).isPresent()) {
             throw new EmailAlreadyInUseException(email);
         }
+        tenantSession.clearCrossTenant();
+        tenantSession.bind();
         // Plan-tier cap (BILLING_TIERS_SPEC §5; HANDOFF_2026-06-12 §5).
         int currentStaff = userRepository.findAll().size();
         int limit = billingService.featureLimit(tenantId, "staff_accounts");
@@ -334,12 +342,6 @@ public class StaffInviteService {
     }
 
     // ----- domain exceptions -------------------------------------------------
-
-    public static class EmailAlreadyInUseException extends RuntimeException {
-        public EmailAlreadyInUseException(String email) {
-            super("A user with email " + email + " already exists");
-        }
-    }
 
     public static class PlanLimitReachedException extends RuntimeException {
         private final int limit;

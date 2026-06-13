@@ -53,6 +53,14 @@ public class TenantService {
         if (tenantRepository.existsBySlug(slug)) {
             throw new IllegalArgumentException("A tenant with slug '" + slug + "' already exists");
         }
+        // V50 — global unique on users.email. Need the cross_tenant
+        // GUC since no tenant is bound yet; without it the RLS policy
+        // hides the existing row and the DB constraint fires as a 500.
+        tenantSession.bindCrossTenant();
+        if (userRepository.findFirstByEmailCrossTenant(adminEmail).isPresent()) {
+            throw new io.conddo.core.auth.EmailAlreadyInUseException(adminEmail);
+        }
+        tenantSession.clearCrossTenant();
         Tenant tenant = tenantRepository.save(new Tenant(name, slug, verticalId, planId));
         persistAdmin(tenant, adminEmail, passwordHasher.hash(adminPassword), adminFullName, null, false);
         events.publishEvent(new TenantActivatedEvent(tenant.getId()));
@@ -69,6 +77,14 @@ public class TenantService {
     public Provisioned provisionFromRegistration(String businessName, String verticalId, String planId,
                                                  String adminEmail, String adminPasswordHash,
                                                  String adminFullName, String adminPhone) {
+        // V50 — same guard as create(). RegistrationService.start
+        // pre-checks but a same-email race during the 5-min OTP
+        // window would otherwise hit the DB constraint as a 500.
+        tenantSession.bindCrossTenant();
+        if (userRepository.findFirstByEmailCrossTenant(adminEmail).isPresent()) {
+            throw new io.conddo.core.auth.EmailAlreadyInUseException(adminEmail);
+        }
+        tenantSession.clearCrossTenant();
         Tenant tenant = tenantRepository.save(
                 new Tenant(businessName, uniqueSlug(businessName), verticalId, planId));
         User admin = persistAdmin(tenant, adminEmail, adminPasswordHash, adminFullName, adminPhone, true);

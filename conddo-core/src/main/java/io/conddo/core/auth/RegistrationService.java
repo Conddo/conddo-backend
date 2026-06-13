@@ -93,6 +93,11 @@ public class RegistrationService {
         if (!identity.emailVerified()) {
             throw new GoogleEmailUnverifiedException();
         }
+        tenantSession.bindCrossTenant();
+        if (userRepository.findFirstByEmailCrossTenant(identity.email()).isPresent()) {
+            throw new EmailAlreadyInUseException(identity.email());
+        }
+        tenantSession.clearCrossTenant();
         String fullName = identity.name() == null || identity.name().isBlank()
                 ? identity.email() : identity.name();
         String randomPassword = randomPassword();
@@ -109,6 +114,14 @@ public class RegistrationService {
     /** Step 1 — stash the account details and send the first OTP. */
     @Transactional
     public StartResult start(String fullName, String phone, String email, String rawPassword) {
+        // V50: one email = one account, globally. Reject early so the
+        // FE sees a clean 409 instead of letting the abandoner sit on
+        // a pending OTP that can never complete.
+        tenantSession.bindCrossTenant();
+        if (userRepository.findFirstByEmailCrossTenant(email).isPresent()) {
+            throw new EmailAlreadyInUseException(email);
+        }
+        tenantSession.clearCrossTenant();
         OffsetDateTime now = OffsetDateTime.now(clock);
         String code = generateCode();
         PendingRegistration registration = new PendingRegistration(

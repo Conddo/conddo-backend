@@ -49,4 +49,18 @@ public class TenantSession {
                 .createNativeQuery("SELECT set_config('app.cross_tenant', 'true', true)")
                 .getSingleResult();
     }
+
+    /**
+     * Turn off the cross-tenant carve-out for the remainder of the
+     * current transaction. Call this after a cross-tenant lookup if
+     * you're about to do tenant-scoped work in the same transaction
+     * — otherwise the {@code app.cross_tenant=true} GUC stays set
+     * and queries like {@code findAll()} silently see every tenant's
+     * rows.
+     */
+    public void clearCrossTenant() {
+        entityManager
+                .createNativeQuery("SELECT set_config('app.cross_tenant', '', true)")
+                .getSingleResult();
+    }
 }
