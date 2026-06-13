@@ -1,0 +1,37 @@
+id: pharmacy
+name: Pharmacy
+
+tools:
+  starter:
+    - website
+    - crm.pharmacy
+    - inventory.pharmacy
+    - pos.pharmacy
+    - prescriptions
+    - consultations
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+  pro:
+    - marketing.ads
+    - analytics.pharmacy
+
+orderStages:
+  - Received
+  - Processing
+  - Ready for Pickup
+  - Dispatched
+  - Delivered
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - about
+  - services
+  - products
+  - contact

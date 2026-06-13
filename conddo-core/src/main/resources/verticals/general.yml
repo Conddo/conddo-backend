@@ -1,0 +1,40 @@
+id: general
+name: General Business
+
+# Fallback for unknown / "general" verticals — a generic
+# orders-centric business. Reachable under both ids the rest of
+# the stack uses ("general" and "default") via the alias.
+aliases:
+  - default
+
+tools:
+  starter:
+    - website
+    - crm
+    - orders
+    - bookings
+    - inventory
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - marketing.leads
+  pro:
+    - marketing.ads
+
+orderStages:
+  - Received
+  - In Progress
+  - Ready
+  - Completed
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - about
+  - services
+  - contact

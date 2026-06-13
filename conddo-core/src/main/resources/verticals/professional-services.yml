@@ -1,0 +1,36 @@
+id: professional-services
+name: Professional Services
+
+tools:
+  starter:
+    - website
+    - crm
+    - bookings
+    - payments
+    - document-vault
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - marketing.leads
+  pro:
+    - marketing.ads
+
+orderStages:
+  - Requested
+  - Scheduled
+  - In Progress
+  - Completed
+  - Closed
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - about
+  - services
+  - team
+  - testimonials
+  - contact

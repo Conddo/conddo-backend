@@ -1,0 +1,34 @@
+id: beauty-and-wellness
+name: Beauty & Wellness
+
+tools:
+  starter:
+    - website
+    - crm
+    - bookings
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - loyalty
+  pro:
+    - marketing.ads
+
+orderStages:
+  - Booked
+  - Confirmed
+  - In Service
+  - Completed
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - about
+  - services
+  - gallery
+  - testimonials
+  - contact

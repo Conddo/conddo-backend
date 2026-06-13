@@ -1,0 +1,48 @@
+id: fashion
+name: Fashion & Tailoring
+
+# Fashion — orders is the headline (made-to-measure jobs); the
+# vertical-specific deep-dive screens are Fittings (specialized
+# bookings) and Fabric (specialized inventory). Both ship in the
+# starter tier so every fashion tenant sees them on day one.
+tools:
+  starter:
+    - website
+    - crm
+    - orders.fashion
+    - fittings.fashion
+    - fabric.fashion
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - marketing.leads
+  pro:
+    - marketing.ads
+
+orderStages:
+  - Received
+  - Measurement Taken
+  - Fabric Sourced
+  - In Production
+  - Ready for Fitting
+  - Delivered
+
+measurementFields:
+  - { key: chest, label: Chest, unit: in }
+  - { key: waist, label: Waist, unit: in }
+  - { key: hips, label: Hips, unit: in }
+  - { key: length, label: Length, unit: in }
+  - { key: shoulder, label: Shoulder, unit: in }
+  - { key: sleeve, label: Sleeve, unit: in }
+
+websiteSections:
+  - hero
+  - about
+  - services
+  - gallery
+  - testimonials
+  - contact

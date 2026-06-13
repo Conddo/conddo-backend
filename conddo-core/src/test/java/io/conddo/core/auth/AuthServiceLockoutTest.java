@@ -66,7 +66,7 @@ class AuthServiceLockoutTest {
         when(hasher.matches(eq(CORRECT), anyString())).thenReturn(true);
         authService = new AuthService(tenantRepository, userRepository, tenantSession, hasher,
                 jwtService, refreshTokenService, new LockoutPolicy(props), auditService,
-                new io.conddo.core.registry.VerticalToolMatrix(), props,
+                new io.conddo.core.registry.VerticalToolMatrix(new io.conddo.core.registry.VerticalDataLoader()), props,
                 new DormantGoogleIdTokenVerifier(), clock);
     }
 

@@ -1,0 +1,35 @@
+id: retail
+name: Retail / Shop
+
+tools:
+  starter:
+    - website
+    - crm
+    - inventory.retail
+    - pos
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+  pro:
+    - marketing.ads
+    - ecommerce
+
+orderStages:
+  - Received
+  - Processing
+  - Packed
+  - Dispatched
+  - Delivered
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - about
+  - products
+  - gallery
+  - contact

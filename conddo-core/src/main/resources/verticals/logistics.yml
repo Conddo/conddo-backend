@@ -1,0 +1,37 @@
+id: logistics
+name: Logistics
+
+tools:
+  starter:
+    - website
+    - crm
+    - orders.logistics
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.sms
+  pro:
+    - marketing.ads
+    - tracking.advanced
+
+orderStages:
+  - Booked
+  - Picked Up
+  - In Transit
+  - Out for Delivery
+  - Delivered
+
+measurementFields:
+  - { key: weight, label: Weight, unit: kg }
+  - { key: length, label: Length, unit: cm }
+  - { key: width, label: Width, unit: cm }
+  - { key: height, label: Height, unit: cm }
+
+websiteSections:
+  - hero
+  - about
+  - services
+  - tracking
+  - contact

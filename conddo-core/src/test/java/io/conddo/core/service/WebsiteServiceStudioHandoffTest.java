@@ -48,7 +48,8 @@ class WebsiteServiceStudioHandoffTest {
     }
 
     private WebsiteService service(Optional<StudioJobGateway> studio) {
-        return new WebsiteService(tenantRepository, changeRepo, new VerticalConfigRegistry(),
+        return new WebsiteService(tenantRepository, changeRepo,
+                new VerticalConfigRegistry(new io.conddo.core.registry.VerticalDataLoader()),
                 tenantSession, studio, "conddo.io");
     }
 

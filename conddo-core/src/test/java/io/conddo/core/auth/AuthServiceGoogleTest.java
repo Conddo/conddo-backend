@@ -67,7 +67,7 @@ class AuthServiceGoogleTest {
         when(refreshTokenService.issue(any(), any())).thenReturn("refresh-raw");
         authService = new AuthService(tenantRepository, userRepository, tenantSession, hasher,
                 jwtService, refreshTokenService, new LockoutPolicy(props), auditService,
-                new VerticalToolMatrix(), props, googleVerifier, clock);
+                new VerticalToolMatrix(new io.conddo.core.registry.VerticalDataLoader()), props, googleVerifier, clock);
     }
 
     @Test

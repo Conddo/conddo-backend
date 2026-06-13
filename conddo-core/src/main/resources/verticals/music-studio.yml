@@ -1,0 +1,43 @@
+id: music-studio
+name: Music Studio
+
+# Covers recording studios (Type A) and music schools (Type B).
+# Bookings is the headline module (rooms/booths/lesson slots);
+# payments handles deposit-at-booking — the killer feature for
+# stopping ghost bookings.
+tools:
+  starter:
+    - website
+    - crm
+    - bookings
+    - sessions.music-studio
+    - payments
+    - inventory
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - projects
+  pro:
+    - marketing.ads
+    - music-school
+
+orderStages:
+  - Booked
+  - Deposit Paid
+  - In Session
+  - Post-Production
+  - Delivered
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - rooms
+  - services
+  - equipment
+  - credits
+  - booking
+  - contact

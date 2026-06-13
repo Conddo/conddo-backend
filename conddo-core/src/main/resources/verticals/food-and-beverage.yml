@@ -1,0 +1,34 @@
+id: food-and-beverage
+name: Food & Beverage
+
+tools:
+  starter:
+    - website
+    - crm
+    - orders
+    - payments
+    - analytics
+  business:
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - table-mgmt
+  pro:
+    - marketing.ads
+
+orderStages:
+  - Received
+  - Preparing
+  - Ready
+  - Out for Delivery
+  - Delivered
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - about
+  - menu
+  - gallery
+  - contact
