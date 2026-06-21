@@ -96,6 +96,7 @@ grafana.conddo.io       → Monitoring dashboard (restricted access)
 # On your local machine — create the server via Hetzner CLI
 # Install: brew install hcloud
 
+
 hcloud server create \
   --name conddo-prod \
   --type cpx41 \
@@ -674,6 +675,7 @@ CREATE TABLE tenant_modules (
     activated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deactivated_at  TIMESTAMPTZ,
     UNIQUE (tenant_id, module_id)
+    
 );
 
 CREATE INDEX idx_tenant_modules_tenant ON tenant_modules (tenant_id, status);

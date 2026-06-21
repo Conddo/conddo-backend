@@ -28,7 +28,7 @@ spring:
       connection-init-sql: "SET SESSION app.cross_tenant = 'true'"
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     open-in-view: false
     properties:
       hibernate:

@@ -42,9 +42,9 @@ spring:
       max-request-size: ${CONDDO_MEDIA_MAX_REQUEST_SIZE:12MB}
 
 conddo:
-  # Base domain for subdomain→tenant resolution (businessname.conddo.io). Set
+  # Base domain for subdomain→tenant resolution (businessname.getconddo.com). Set
   # CONDDO_BASE_DOMAIN once the domain + wildcard DNS are pointed at the service.
-  base-domain: ${CONDDO_BASE_DOMAIN:conddo.io}
+  base-domain: ${CONDDO_BASE_DOMAIN:getconddo.com}
   signup:
     # Seed a small set of sample customers / products / orders on TenantActivated
     # for Fashion + Pharmacy tenants — keeps the dashboard from feeling empty
@@ -81,7 +81,7 @@ conddo:
       base-url: ${CONDDO_EMAIL_BASE_URL:}
       # Brevo and Resend each use one API key; Brevo shares CONDDO_BREVO_API_KEY with SMS.
       api-key: ${CONDDO_EMAIL_API_KEY:${CONDDO_BREVO_API_KEY:${CONDDO_RESEND_API_KEY:}}}
-      from: ${CONDDO_EMAIL_FROM:no-reply@conddo.io}
+      from: ${CONDDO_EMAIL_FROM:no-reply@getconddo.com}
       from-name: ${CONDDO_EMAIL_FROM_NAME:Conddo}
       # Public logo URL embedded in the branded HTML email templates.
       logo-url: ${CONDDO_EMAIL_LOGO_URL:}
@@ -93,7 +93,7 @@ conddo:
     jwt:
       public-key: ${CONDDO_JWT_PUBLIC_KEY:classpath:keys/dev_public.pem}
       private-key: ${CONDDO_JWT_PRIVATE_KEY:classpath:keys/dev_private.pem}
-      issuer: ${CONDDO_JWT_ISSUER:https://conddo.io}
+      issuer: ${CONDDO_JWT_ISSUER:https://getconddo.com}
       access-ttl: ${CONDDO_JWT_ACCESS_TTL:15m}
     # Authentication tunables (refresh-token lifetime, lockout, cookie flags).
     auth:

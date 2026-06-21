@@ -26,7 +26,7 @@ import java.util.Optional;
  * invoke it through the Spring proxy — a {@code @Transactional} method on
  * the same bean as the scheduler would self-invoke and miss the
  * {@code REQUIRES_NEW} boundary, leaving the {@code tenantSession.bind()}
- * call running outside any transaction.
+ * call running outside any transaction. 
  */
 @Component
 public class BillingExpiryNotifier {

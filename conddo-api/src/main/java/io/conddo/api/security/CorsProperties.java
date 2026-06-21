@@ -10,10 +10,10 @@ import java.util.List;
  * <p>Two binding points — both come from comma-separated env vars:
  * <ul>
  *   <li>{@code conddo.security.cors.allowed-origins} ({@code CONDDO_CORS_ALLOWED_ORIGINS})
- *       — exact origins, e.g. {@code http://localhost:3000,https://conddo.io}.</li>
+ *       — exact origins, e.g. {@code http://localhost:3000,https://getconddo.com}.</li>
  *   <li>{@code conddo.security.cors.allowed-origin-patterns} ({@code CONDDO_CORS_ALLOWED_ORIGIN_PATTERNS})
  *       — Spring CORS patterns with wildcards, e.g.
- *       {@code https://*.conddo.io,https://*.vercel.app}. Required for any
+ *       {@code https://*.getconddo.com,https://*.vercel.app}. Required for any
  *       deploy with preview URLs or multi-subdomain frontends.</li>
  * </ul>
  *

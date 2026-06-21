@@ -22,6 +22,8 @@ import java.util.HexFormat;
  * Authenticates Studio staff and issues HMAC access tokens + opaque refresh
  * tokens (Infrastructure §12). Refresh tokens are random, stored as a SHA-256
  * hash, and rotated on use. Internal tool — single shared studio.staff identity.
+ * 
+ * 
  */
 @Service
 public class StudioAuthService {

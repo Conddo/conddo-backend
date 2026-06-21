@@ -67,7 +67,7 @@ services:
         sync: false
       # HMAC secret for inbound webhooks from Ayrshare. Generate in Ayrshare's
       # dashboard; configure their webhook URL to point at
-      # https://api.conddo.io/webhooks/ayrshare.
+      # https://api.getconddo.com/webhooks/ayrshare.
       - key: AYRSHARE_WEBHOOK_SECRET
         sync: false
       # 32-byte envelope key for at-rest encryption of each tenant's Ayrshare
@@ -114,8 +114,8 @@ services:
       - key: STUDIO_SERVICE_TOKEN
         generateValue: true
       - key: STUDIO_JWT_ISSUER
-        value: https://jobs.conddo.io
-      # Jobs Board frontend origin(s), e.g. https://jobs.conddo.io
+        value: https://jobs.getconddo.com
+      # Jobs Board frontend origin(s), e.g. https://jobs.getconddo.com
       - key: STUDIO_CORS_ALLOWED_ORIGINS
         sync: false
 

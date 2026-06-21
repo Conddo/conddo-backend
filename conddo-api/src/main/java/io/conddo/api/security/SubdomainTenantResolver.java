@@ -13,8 +13,8 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * Resolves a tenant from the request host's subdomain (Architecture §6.3 / §11),
- * i.e. {@code businessname.conddo.io → tenant}. Built ahead of the domain so it
- * "just works" the moment {@code *.conddo.io} (wildcard DNS) is pointed at the
+ * i.e. {@code businessname.getconddo.com → tenant}. Built ahead of the domain so it
+ * "just works" the moment {@code *.getconddo.com} (wildcard DNS) is pointed at the
  * service and {@code CONDDO_BASE_DOMAIN} is set — no Nginx required, since the
  * app reads the forwarded Host header itself.
  *
@@ -33,7 +33,7 @@ public class SubdomainTenantResolver {
     private final ConcurrentMap<String, Cached> cache = new ConcurrentHashMap<>();
 
     public SubdomainTenantResolver(TenantRepository tenantRepository,
-                                   @Value("${conddo.base-domain:conddo.io}") String baseDomain) {
+                                   @Value("${conddo.base-domain:getconddo.com}") String baseDomain) {
         this.tenantRepository = tenantRepository;
         this.baseDomain = baseDomain.trim().toLowerCase();
     }
