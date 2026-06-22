@@ -10,6 +10,8 @@ spring:
     hikari:
       maximum-pool-size: 10
       pool-name: conddo-app-pool
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
 
   jpa:
     hibernate:
