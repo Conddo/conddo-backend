@@ -1,16 +1,27 @@
 name: CI
 
+# Per Infrastructure Working Doc §5: every push runs lint + tests +
+# build. The integration tests use Testcontainers, which need a running
+# Docker engine — ubuntu-latest includes one by default.
+
 on:
   push:
-    branches: [main]
+    branches: [main, dev, staging, production]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build + RLS tests
+    name: Build · RLS tests · Integration tests
     runs-on: ubuntu-latest
-    # ubuntu-latest runners include a running Docker engine, which the
-    # Testcontainers RLS isolation test needs.
+    # Bump if a Testcontainers boot or a Flyway migration consistently
+    # takes longer than the default — keeps a stuck run from burning
+    # the GitHub Actions free-tier minutes (Infra Doc §7).
+    timeout-minutes: 25
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +33,10 @@ jobs:
           cache: maven
 
       - name: Generate dev JWT keys
-        # The RSA signing keys are gitignored; the app needs them on the
-        # classpath to boot during the integration tests. Production supplies
-        # real keys via CONDDO_JWT_* env vars.
+        # RSA signing keys are gitignored; the app needs them on the
+        # classpath to boot during the integration tests. Production
+        # supplies real keys via CONDDO_JWT_* env vars (set in the
+        # deploy workflow, not here).
         run: |
           mkdir -p conddo-api/src/main/resources/keys
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
@@ -33,4 +45,8 @@ jobs:
             -pubout -out conddo-api/src/main/resources/keys/dev_public.pem
 
       - name: Build & test
+        # `verify` runs the unit tests, integration tests (incl. the
+        # RLS Testcontainers harness), and packages the JARs — same as
+        # what a release deploy would do. Catching breakage here is
+        # cheaper than catching it on a staging redeploy.
         run: ./mvnw -B clean verify
