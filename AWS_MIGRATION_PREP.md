@@ -134,10 +134,22 @@ Compiled from `backend/render.yaml`. **26 env vars** total on the main API servi
 | Name | For which service | Source |
 |---|---|---|
 | `CLAUDE_API_KEY` | both AI services | already in use |
-| `DEEPSEEK_API_KEY` | both AI services | new — sign up |
+| `OPENROUTER_API_KEY` | both AI services | new — sign up at openrouter.ai |
+| `OPENROUTER_BASE_URL` | both AI services | `https://openrouter.ai/api/v1` (constant) |
+| `DEEPSEEK_MODEL` | both AI services | e.g. `deepseek/deepseek-chat` (OpenRouter model id) |
+| `CLAUDE_MODEL` | fallback / compliance | e.g. `anthropic/claude-sonnet-4-6` |
 | `JINA_API_KEY` | website-generation | new — sign up |
 | `AI_PROVISIONING_CONFIDENCE_THRESHOLD` | ai-provisioning | constant per env |
 | `AI_PROVISIONING_FALLBACK_THRESHOLD` | ai-provisioning | constant per env |
+
+> **Note on OpenRouter vs DeepSeek-direct.** The Infra Doc §2 originally
+> named DeepSeek direct as the LLM provider, but we're routing through
+> **OpenRouter** instead — same DeepSeek models, OpenAI-compatible API,
+> one key covers Claude + DeepSeek + Gemini Flash + every fallback we
+> might want without juggling separate provider accounts. The FastAPI
+> services use the OpenAI Python SDK pointed at `OPENROUTER_BASE_URL` —
+> no SDK code change to swap models, just change the model id string in
+> env config. Direct DeepSeek API keys are not required.
 
 ---
 
@@ -179,7 +191,7 @@ Fill the dates / caps as you confirm them.
 | ACM | free | — | — | ✓ |
 | ALB | no free; $16/mo + per LCU | — | — | $16-25/mo |
 | CloudWatch | 5 GB ingest free | monthly | — | ✓ |
-| DeepSeek | 5M tokens on signup | 30 days | — | check weekly |
+| OpenRouter | pay-as-you-go credit balance (no free tier) | — | top up as needed | check weekly during AI build-out |
 | Sentry | `[plan event cap]` | monthly | — | check monthly |
 | Opik | `[plan trace cap]` | monthly | — | check monthly |
 | Jina | `[rate limit]` | — | — | as usage grows |
