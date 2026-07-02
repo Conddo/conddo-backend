@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build-and-push:
-    name: Build + push ghcr.io/mickercode/conddo-backend:lean
+    name: Build + push ghcr.io/conddo/conddo-backend:lean
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -49,7 +49,7 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/mickercode/conddo-backend:lean
-            ghcr.io/mickercode/conddo-backend:sha-${{ github.sha }}
+            ghcr.io/conddo/conddo-backend:lean
+            ghcr.io/conddo/conddo-backend:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
