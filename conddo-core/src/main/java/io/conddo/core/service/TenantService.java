@@ -3,6 +3,7 @@ package io.conddo.core.service;
 import io.conddo.core.auth.PasswordHasher;
 import io.conddo.core.auth.Role;
 import io.conddo.core.common.Slugs;
+import io.conddo.core.credits.CreditService;
 import io.conddo.core.domain.Tenant;
 import io.conddo.core.domain.User;
 import io.conddo.core.repository.TenantRepository;
@@ -30,15 +31,17 @@ public class TenantService {
     private final TenantSession tenantSession;
     private final PasswordHasher passwordHasher;
     private final ApplicationEventPublisher events;
+    private final CreditService creditService;
 
     public TenantService(TenantRepository tenantRepository, UserRepository userRepository,
                          TenantSession tenantSession, PasswordHasher passwordHasher,
-                         ApplicationEventPublisher events) {
+                         ApplicationEventPublisher events, CreditService creditService) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
         this.tenantSession = tenantSession;
         this.passwordHasher = passwordHasher;
         this.events = events;
+        this.creditService = creditService;
     }
 
     /**
@@ -63,6 +66,7 @@ public class TenantService {
         tenantSession.clearCrossTenant();
         Tenant tenant = tenantRepository.save(new Tenant(name, slug, verticalId, planId));
         persistAdmin(tenant, adminEmail, passwordHasher.hash(adminPassword), adminFullName, null, false);
+        creditService.provisionAccount(tenant.getId());
         events.publishEvent(new TenantActivatedEvent(tenant.getId()));
         return tenant;
     }
@@ -88,6 +92,7 @@ public class TenantService {
         Tenant tenant = tenantRepository.save(
                 new Tenant(businessName, uniqueSlug(businessName), verticalId, planId));
         User admin = persistAdmin(tenant, adminEmail, adminPasswordHash, adminFullName, adminPhone, true);
+        creditService.provisionAccount(tenant.getId());
         events.publishEvent(new TenantActivatedEvent(tenant.getId()));
         return new Provisioned(tenant, admin);
     }

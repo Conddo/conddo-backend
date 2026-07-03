@@ -125,6 +125,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("EMAIL_VERIFICATION_EXPIRED", ex.getMessage())));
     }
 
+    @ExceptionHandler(io.conddo.core.credits.CreditExhaustedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCreditExhausted(io.conddo.core.credits.CreditExhaustedException ex) {
+        // 402 Payment Required — semantically the right code for "out of
+        // credits, purchase to continue". FE renders the top-up modal on this.
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                .body(ApiResponse.fail(ApiError.of("CREDITS_EXHAUSTED", ex.getMessage())));
+    }
+
     @ExceptionHandler(InvalidOtpException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidOtp(InvalidOtpException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
