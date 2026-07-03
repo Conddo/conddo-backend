@@ -133,6 +133,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("CREDITS_EXHAUSTED", ex.getMessage())));
     }
 
+    @ExceptionHandler(io.conddo.core.ai.EmailVerificationRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailVerifyRequired(io.conddo.core.ai.EmailVerificationRequiredException ex) {
+        // 403 Forbidden — the FE keys on this code to point the user at
+        // the amber verify banner instead of showing a raw error.
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("EMAIL_VERIFICATION_REQUIRED", ex.getMessage())));
+    }
+
     @ExceptionHandler(InvalidOtpException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidOtp(InvalidOtpException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

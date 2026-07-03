@@ -1,12 +1,17 @@
 package io.conddo.api.web;
 
+import io.conddo.core.ai.AiCallContext;
 import io.conddo.core.common.ApiResponse;
+import io.conddo.core.credits.CreditActions;
 import io.conddo.core.service.ModuleSuggestionService;
 import io.conddo.core.service.ModuleSuggestionService.Result;
 import io.conddo.core.service.ModuleSuggestionService.Score;
+import io.conddo.core.tenant.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * AI-driven module suggestion (Vertical Inference Phase C). Takes a
@@ -37,8 +43,17 @@ public class ModuleSuggestionController {
     }
 
     @PostMapping("/suggest")
-    public ApiResponse<Map<String, Object>> suggest(@Valid @RequestBody SuggestRequest body) {
-        Result result = service.suggest(body.businessDescription(), body.verticalHint());
+    public ApiResponse<Map<String, Object>> suggest(@Valid @RequestBody SuggestRequest body,
+                                                    @AuthenticationPrincipal Jwt jwt) {
+        // Tenant-scoped classify — routes through AiGateway so the tenant
+        // pays credits + must have verified their email. Uses
+        // AI_PROVISIONING because "re-classify my modules from a new
+        // description" is functionally the same action.
+        AiCallContext ctx = AiCallContext.forTenant(
+                TenantContext.require(),
+                UUID.fromString(jwt.getSubject()),
+                CreditActions.AI_PROVISIONING);
+        Result result = service.suggest(ctx, body.businessDescription(), body.verticalHint());
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("vertical", result.vertical());
         resp.put("verticalConfidence", result.verticalConfidence());

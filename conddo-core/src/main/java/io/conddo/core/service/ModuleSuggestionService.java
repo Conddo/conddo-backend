@@ -2,6 +2,8 @@ package io.conddo.core.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.core.ai.AiCallContext;
+import io.conddo.core.ai.AiGateway;
 import io.conddo.core.ai.AnthropicGateway;
 import io.conddo.core.registry.ModuleCatalogue;
 import io.conddo.core.registry.VerticalDataLoader;
@@ -33,27 +35,38 @@ public class ModuleSuggestionService {
 
     private static final Logger log = LoggerFactory.getLogger(ModuleSuggestionService.class);
 
-    private final AnthropicGateway anthropic;
+    private final AiGateway aiGateway;
     private final VerticalDataLoader verticals;
     private final ObjectMapper objectMapper;
 
-    public ModuleSuggestionService(AnthropicGateway anthropic, VerticalDataLoader verticals,
+    public ModuleSuggestionService(AiGateway aiGateway, VerticalDataLoader verticals,
                                     ObjectMapper objectMapper) {
-        this.anthropic = anthropic;
+        this.aiGateway = aiGateway;
         this.verticals = verticals;
         this.objectMapper = objectMapper;
     }
 
-    public Result suggest(String description, String verticalHint) {
+    /** Convenience for the tenant-scoped path — the caller passes their
+     *  {@link AiCallContext} (tenant, user, action type) so the call goes
+     *  through the credit + verified-email loop. */
+    public Result suggest(AiCallContext ctx, String description, String verticalHint) {
         if (description == null || description.isBlank()) {
             throw new IllegalArgumentException("businessDescription is required");
         }
         Set<String> moduleIds = allKnownModuleIds();
         Set<String> verticalIds = allKnownVerticalIds();
         String prompt = buildPrompt(description, verticalHint, moduleIds, verticalIds);
-        String raw = anthropic.chatText(prompt);
+        String raw = aiGateway.chatText(ctx, prompt);
         Parsed parsed = parseResponse(raw, moduleIds, verticalIds);
         return new Result(parsed.scores, parsed.vertical, parsed.verticalConfidence);
+    }
+
+    /** Pre-tenant convenience — used by the onboarding classifier where the
+     *  tenant doesn't exist yet. Passes a {@link AiCallContext#preTenant} so
+     *  the gateway skips credit + verified-email checks. */
+    public Result suggest(String description, String verticalHint) {
+        return suggest(AiCallContext.preTenant(io.conddo.core.credits.CreditActions.AI_PROVISIONING),
+                description, verticalHint);
     }
 
     // ----- internals --------------------------------------------------------
