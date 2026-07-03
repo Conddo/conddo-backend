@@ -54,7 +54,7 @@ class AuthServiceLockoutTest {
     private final io.conddo.core.audit.AuditService auditService = mock(io.conddo.core.audit.AuditService.class);
 
     private final AuthProperties props =
-            new AuthProperties(Duration.ofDays(30), THRESHOLD, BASE_LOCK, true, Duration.ofHours(1), "Strict");
+            new AuthProperties(Duration.ofDays(30), THRESHOLD, BASE_LOCK, true, Duration.ofHours(1), "Strict", true);
 
     private AuthService authService;
     private User user;

@@ -54,7 +54,7 @@ class AuthServiceGoogleTest {
     private final GoogleIdTokenVerifier googleVerifier = mock(GoogleIdTokenVerifier.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-06-03T12:00:00Z"), ZoneOffset.UTC);
     private final AuthProperties props =
-            new AuthProperties(Duration.ofDays(30), 5, Duration.ofMinutes(15), true, Duration.ofHours(1), "Strict");
+            new AuthProperties(Duration.ofDays(30), 5, Duration.ofMinutes(15), true, Duration.ofHours(1), "Strict", true);
 
     private AuthService authService;
 

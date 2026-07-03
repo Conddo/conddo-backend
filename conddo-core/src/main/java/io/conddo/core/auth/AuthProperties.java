@@ -15,6 +15,10 @@ import java.time.Duration;
  * @param passwordResetTtl    lifetime of a password-reset token (e.g. 1h)
  * @param cookieSameSite      refresh-cookie SameSite: {@code Strict}/{@code Lax}/{@code None}
  *                            (None — with Secure — is required for a cross-site frontend)
+ * @param requireOtpVerify    when true (default), the /auth/register/complete call
+ *                            requires the OTP step first. When false, the OTP is
+ *                            skipped and email verification is deferred until
+ *                            after onboarding (per the new low-friction flow).
  */
 @ConfigurationProperties(prefix = "conddo.security.auth")
 public record AuthProperties(
@@ -23,6 +27,7 @@ public record AuthProperties(
         Duration lockoutBaseDuration,
         boolean cookieSecure,
         Duration passwordResetTtl,
-        String cookieSameSite
+        String cookieSameSite,
+        boolean requireOtpVerify
 ) {
 }

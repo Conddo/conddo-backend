@@ -114,7 +114,7 @@ public class RegistrationService {
         return new StartResult(registration.getId(), otp.resendCooldown().toSeconds());
     }
 
-    /** Step 1 — stash the account details and send the first OTP. */
+    /** Step 1 — stash the account details and (unless deferred) send the first OTP. */
     @Transactional
     public StartResult start(String fullName, String phone, String email, String rawPassword) {
         // V50: one email = one account, globally. Reject early so the
@@ -131,7 +131,11 @@ public class RegistrationService {
                 fullName, phone, email, passwordHasher.hash(rawPassword),
                 passwordHasher.hash(code), now.plus(otp.ttl()), now);
         registrations.save(registration);
-        notificationService.sendOtpEmail(email, code); // free path (Resend); swap to sendOtp(phone,code) once SMS is funded
+        // Skip OTP send in the low-friction flow; verification happens after
+        // onboarding via an emailed link (§ Onboarding Rewrite v2).
+        if (authProperties.requireOtpVerify()) {
+            notificationService.sendOtpEmail(email, code);
+        }
         return new StartResult(registration.getId(), otp.resendCooldown().toSeconds());
     }
 
@@ -176,11 +180,14 @@ public class RegistrationService {
         return otp.resendCooldown().toSeconds();
     }
 
-    /** Final step — create the tenant + admin (phone must be verified) and log in. */
+    /** Final step — create the tenant + admin and log in. Phone verification
+     *  is enforced only when {@code conddo.security.auth.require-otp-verify}
+     *  is true; the low-friction flow defers verification to a post-onboarding
+     *  email link. */
     @Transactional
     public AuthResult complete(UUID registrationId, String businessName, String businessType, String planId) {
         PendingRegistration registration = active(registrationId);
-        if (!registration.isPhoneVerified()) {
+        if (authProperties.requireOtpVerify() && !registration.isPhoneVerified()) {
             throw new PhoneNotVerifiedException();
         }
         TenantService.Provisioned provisioned = tenantService.provisionFromRegistration(
@@ -217,6 +224,12 @@ public class RegistrationService {
         return registrations.findById(registrationId)
                 .filter(registration -> !registration.isCompleted())
                 .orElseThrow(RegistrationNotFoundException::new);
+    }
+
+    /** Public gate for controllers that need to prove a caller is mid-signup
+     *  (e.g. onboarding AI classification) without exposing the entity. */
+    public void requireActive(UUID registrationId) {
+        active(registrationId);
     }
 
     private String generateCode() {
