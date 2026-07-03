@@ -49,10 +49,11 @@ public class ModuleSuggestionService {
             throw new IllegalArgumentException("businessDescription is required");
         }
         Set<String> moduleIds = allKnownModuleIds();
-        String prompt = buildPrompt(description, verticalHint, moduleIds);
+        Set<String> verticalIds = allKnownVerticalIds();
+        String prompt = buildPrompt(description, verticalHint, moduleIds, verticalIds);
         String raw = anthropic.chatText(prompt);
-        List<Score> scores = parseScores(raw, moduleIds);
-        return new Result(scores);
+        Parsed parsed = parseResponse(raw, moduleIds, verticalIds);
+        return new Result(parsed.scores, parsed.vertical, parsed.verticalConfidence);
     }
 
     // ----- internals --------------------------------------------------------
@@ -67,7 +68,17 @@ public class ModuleSuggestionService {
         return sortedIds;
     }
 
-    private String buildPrompt(String description, String verticalHint, Set<String> moduleIds) {
+    private Set<String> allKnownVerticalIds() {
+        // TreeSet for stable prompt ordering, so identical inputs → identical prompts.
+        Set<String> ids = new java.util.TreeSet<>();
+        for (VerticalDefinition def : verticals.all().values()) {
+            ids.add(def.id());
+        }
+        return ids;
+    }
+
+    private String buildPrompt(String description, String verticalHint,
+                               Set<String> moduleIds, Set<String> verticalIds) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are helping classify a business onto Conddo, a software platform ")
                 .append("that provides modular capability tools to small/medium businesses.\n\n");
@@ -83,22 +94,43 @@ public class ModuleSuggestionService {
         for (String id : moduleIds) {
             sb.append("- ").append(id).append(": ").append(ModuleCatalogue.describe(id)).append("\n");
         }
+        sb.append("\nYou must also pick the single best vertical for this business ")
+                .append("from this closed list. Pick the closest fit; use \"general\" as the last-resort ")
+                .append("catch-all for professional / knowledge-work / other businesses that don't match a ")
+                .append("more specific vertical. Never invent a new id.\n\n");
+        sb.append("Verticals:\n");
+        for (String id : verticalIds) {
+            VerticalDefinition v = verticals.all().get(id);
+            String name = v != null ? v.name() : id;
+            sb.append("- ").append(id).append(": ").append(name).append("\n");
+        }
         sb.append("\nReturn JSON ONLY, no prose, in this exact shape:\n");
-        sb.append("{\"scores\":[{\"id\":\"<module-id>\",\"confidence\":0.0,\"reason\":\"<one short sentence>\"}]}");
-        sb.append("\nInclude an entry for every module above. Use only the module ids listed.");
+        sb.append("{\"vertical\":\"<vertical-id>\",\"verticalConfidence\":0.0,")
+                .append("\"scores\":[{\"id\":\"<module-id>\",\"confidence\":0.0,\"reason\":\"<one short sentence>\"}]}");
+        sb.append("\nInclude an entry for every module above. Use only ids from the lists.");
         return sb.toString();
     }
 
-    private List<Score> parseScores(String raw, Set<String> validIds) {
+    private Parsed parseResponse(String raw, Set<String> validModuleIds, Set<String> validVerticalIds) {
         try {
             String json = extractJsonObject(raw);
             JsonNode root = objectMapper.readTree(json);
+
+            // Vertical — must be one of the closed set. Unknown / missing → "general"
+            // so we never write a bogus vertical id to tenants.vertical_id.
+            String vertical = root.path("vertical").asText("").trim().toLowerCase();
+            if (vertical.isBlank() || !validVerticalIds.contains(vertical)) {
+                vertical = "general";
+            }
+            double verticalConfidence = clamp(root.path("verticalConfidence").asDouble(0.0));
+
+            // Module scores — dedup, clamp, sort desc by confidence.
             JsonNode arr = root.path("scores");
             List<Score> out = new ArrayList<>();
             Set<String> seen = new LinkedHashSet<>();
             for (JsonNode node : arr) {
                 String id = node.path("id").asText("");
-                if (id.isBlank() || !validIds.contains(id) || !seen.add(id)) {
+                if (id.isBlank() || !validModuleIds.contains(id) || !seen.add(id)) {
                     continue;
                 }
                 double confidence = clamp(node.path("confidence").asDouble(0.0));
@@ -106,12 +138,15 @@ public class ModuleSuggestionService {
                 out.add(new Score(id, confidence, reason));
             }
             out.sort(Comparator.comparingDouble(Score::confidence).reversed());
-            return out;
+            return new Parsed(out, vertical, verticalConfidence);
         } catch (RuntimeException | java.io.IOException ex) {
             log.warn("Failed to parse Anthropic suggestion response: {}", ex.getMessage());
             throw new SuggestionUnavailableException(
                     "AI returned a response we couldn't parse. Try again or adjust the description.");
         }
+    }
+
+    private record Parsed(List<Score> scores, String vertical, double verticalConfidence) {
     }
 
     /** Pull the first {...} object out of the response — Claude sometimes wraps in prose. */
@@ -137,7 +172,7 @@ public class ModuleSuggestionService {
     public record Score(String id, double confidence, String reason) {
     }
 
-    public record Result(List<Score> scores) {
+    public record Result(List<Score> scores, String vertical, double verticalConfidence) {
 
         public List<Score> recommended() {
             return scores.stream().filter(s -> s.confidence >= 0.6).toList();

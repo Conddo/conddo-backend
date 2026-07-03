@@ -45,6 +45,8 @@ public class OnboardingClassifyController {
         registrationService.requireActive(body.registrationId());
         Result result = suggestionService.suggest(body.description(), body.verticalHint());
         Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("vertical", result.vertical());
+        resp.put("verticalConfidence", result.verticalConfidence());
         resp.put("scores", result.scores().stream().map(OnboardingClassifyController::toRow).toList());
         resp.put("recommended", result.recommended().stream()
                 .map(OnboardingClassifyController::toRow).toList());

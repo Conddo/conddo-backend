@@ -40,6 +40,8 @@ public class ModuleSuggestionController {
     public ApiResponse<Map<String, Object>> suggest(@Valid @RequestBody SuggestRequest body) {
         Result result = service.suggest(body.businessDescription(), body.verticalHint());
         Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("vertical", result.vertical());
+        resp.put("verticalConfidence", result.verticalConfidence());
         resp.put("scores", result.scores().stream().map(ModuleSuggestionController::toRow).toList());
         resp.put("recommended", result.recommended().stream()
                 .map(ModuleSuggestionController::toRow).toList());
