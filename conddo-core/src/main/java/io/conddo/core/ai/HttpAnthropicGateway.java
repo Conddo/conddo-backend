@@ -29,7 +29,14 @@ import java.util.Map;
  */
 @Component
 @Primary
-@ConditionalOnExpression("'${conddo.anthropic.api-key:}' != ''")
+// Anthropic direct is @Primary ONLY when the OpenRouter gateway isn't
+// configured. Once CONDDO_OPENROUTER_API_KEY is set, the OpenRouter
+// gateway wins Primary (see HttpOpenRouterGateway) and Anthropic stops
+// registering here so Spring doesn't see two Primary beans of the same
+// type. Vision calls still work — OpenRouter can be pointed at a
+// vision-capable model via CONDDO_OPENROUTER_MODEL (e.g. claude-3.5-sonnet).
+@ConditionalOnExpression(
+        "'${conddo.anthropic.api-key:}' != '' && '${conddo.openrouter.api-key:}' == ''")
 public class HttpAnthropicGateway implements AnthropicGateway {
 
     private static final Logger log = LoggerFactory.getLogger(HttpAnthropicGateway.class);

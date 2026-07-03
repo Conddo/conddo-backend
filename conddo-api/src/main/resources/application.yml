@@ -66,6 +66,29 @@ conddo:
   media:
     max-bytes: ${CONDDO_MEDIA_MAX_BYTES:10485760}    # 10 MB; align with multipart max-file-size
 
+  # AI text generation. Two paths, picked at runtime:
+  #   - OpenRouter (preferred): unified gateway to DeepSeek / Claude /
+  #     Gemini / etc. via OpenAI-compatible endpoint. Cheapest per token
+  #     at scale; provider swap-by-env-var.
+  #   - Anthropic direct: legacy path, kept for Pharmacy AI Product
+  #     Assistant's vision calls until we route those through OpenRouter
+  #     with a vision-capable model.
+  # When both are configured, OpenRouter wins @Primary; Anthropic stops
+  # registering (Pharmacy vision should switch to a vision model on
+  # OpenRouter, e.g. anthropic/claude-3.5-sonnet).
+  openrouter:
+    base-url: ${CONDDO_OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+    api-key: ${CONDDO_OPENROUTER_API_KEY:}
+    model: ${CONDDO_OPENROUTER_MODEL:deepseek/deepseek-chat}
+    max-tokens: ${CONDDO_OPENROUTER_MAX_TOKENS:1024}
+    referer: ${CONDDO_OPENROUTER_REFERER:https://getconddo.com}
+    app-title: ${CONDDO_OPENROUTER_APP_TITLE:Conddo}
+  anthropic:
+    base-url: ${CONDDO_ANTHROPIC_BASE_URL:https://api.anthropic.com}
+    api-key: ${CONDDO_ANTHROPIC_API_KEY:}
+    model: ${CONDDO_ANTHROPIC_MODEL:claude-sonnet-4-6}
+    max-tokens: ${CONDDO_ANTHROPIC_MAX_TOKENS:1024}
+
   # Notification channels (PRD §6.4). provider 'log' = stub (the default).
   # SMS via Brevo (set provider=brevo + CONDDO_BREVO_API_KEY); email via Resend
   # (set provider=resend + CONDDO_RESEND_API_KEY + a verified CONDDO_EMAIL_FROM).
