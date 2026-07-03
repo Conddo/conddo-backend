@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -159,10 +160,66 @@ public class CreditService {
         return availableSnapshot(tenantId);
     }
 
+    /** Full dashboard summary — post-rollover snapshot plus per-action
+     *  breakdown of the current cycle's CONSUMED transactions. Feeds
+     *  {@code GET /api/v1/me/credits}. */
+    @Transactional
+    public Summary summaryFor(UUID tenantId) {
+        rollCycleIfExpired(tenantId);
+        TenantCreditAccount account = accounts.findByTenantId(tenantId).orElse(null);
+        if (account == null) {
+            return Summary.empty();
+        }
+        List<Breakdown> breakdown = transactions
+                .findTop50ByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .filter(tx -> CreditTransaction.STATUS_CONSUMED.equals(tx.getStatus()))
+                .filter(tx -> tx.getCreatedAt() != null
+                        && !tx.getCreatedAt().isBefore(account.getBillingCycleStart()))
+                .collect(java.util.stream.Collectors.groupingBy(
+                        CreditTransaction::getActionType,
+                        java.util.stream.Collectors.summingInt(CreditTransaction::getCreditsConsumed)))
+                .entrySet().stream()
+                .map(e -> new Breakdown(e.getKey(), e.getValue()))
+                .sorted(java.util.Comparator.comparingInt(Breakdown::credits).reversed())
+                .toList();
+        return new Summary(
+                account.getTier(),
+                account.getMonthlyQuota(),
+                account.getCreditsUsed(),
+                account.getTopupCredits(),
+                account.getReservedCredits(),
+                account.available(),
+                account.getBillingCycleStart(),
+                account.getBillingCycleEnd(),
+                breakdown);
+    }
+
     private int availableSnapshot(UUID tenantId) {
         return accounts.findByTenantId(tenantId)
                 .map(TenantCreditAccount::available)
                 .orElse(0);
+    }
+
+    /** Dashboard-facing view of the tenant's credit account. */
+    public record Summary(
+            String tier,
+            int monthlyQuota,
+            int creditsUsed,
+            int topupCredits,
+            int reservedCredits,
+            int available,
+            OffsetDateTime cycleStart,
+            OffsetDateTime cycleEnd,
+            java.util.List<Breakdown> breakdown
+    ) {
+        public static Summary empty() {
+            return new Summary(TenantCreditAccount.TIER_FREE, TenantCreditAccount.FREE_MONTHLY_QUOTA,
+                    0, 0, 0, TenantCreditAccount.FREE_MONTHLY_QUOTA,
+                    null, null, java.util.List.of());
+        }
+    }
+
+    public record Breakdown(String actionType, int credits) {
     }
 
     // ----- Provisioning -----------------------------------------------------
