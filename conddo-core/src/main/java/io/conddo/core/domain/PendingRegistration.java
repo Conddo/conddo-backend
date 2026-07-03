@@ -50,6 +50,13 @@ public class PendingRegistration {
     @Column(name = "otp_attempts", nullable = false)
     private int otpAttempts = 0;
 
+    /** Number of times {@code POST /auth/register/classify} has been called
+     *  against this registration. Every classify call hits the AI provider
+     *  (OpenRouter → DeepSeek) so we cap it to stop scripted burn-through
+     *  of our OpenRouter budget before a tenant even exists. */
+    @Column(name = "classify_attempts", nullable = false)
+    private int classifyAttempts = 0;
+
     @Column(name = "otp_sent_count", nullable = false)
     private int otpSentCount = 1;
 
@@ -117,6 +124,18 @@ public class PendingRegistration {
 
     public void recordFailedAttempt() {
         this.otpAttempts++;
+    }
+
+    /** Increment + return the new classify-attempts count. Called on every
+     *  {@code POST /auth/register/classify}; the caller compares against a
+     *  configured cap (default 5) and throws when exceeded. */
+    public int recordClassifyAttempt() {
+        this.classifyAttempts++;
+        return this.classifyAttempts;
+    }
+
+    public int getClassifyAttempts() {
+        return classifyAttempts;
     }
 
     /** Replaces the code on a resend: new hash/expiry, reset attempts, bump the send count. */

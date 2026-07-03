@@ -84,8 +84,23 @@ public class CreditService {
         if (affected == 0) {
             throw new CreditExhaustedException(tenantId, actionType, cost, availableSnapshot(tenantId));
         }
+        flagRunawayIfNecessary(tenantId, now);
         return transactions.save(CreditTransaction.consumed(
                 tenantId, actionType, cost, referenceId, referenceType, now));
+    }
+
+    /** Warns loudly (log) when a tenant burns through their full free quota
+     *  within 24 hours of signup. Legitimate SMBs don't process 100+ credit
+     *  actions on their first day; this is our smoke alarm for scripted
+     *  free-tier abuse. Ops can wire this to a paging system later. */
+    private void flagRunawayIfNecessary(UUID tenantId, OffsetDateTime now) {
+        TenantCreditAccount acc = accounts.findByTenantId(tenantId).orElse(null);
+        if (acc == null) return;
+        Duration age = Duration.between(acc.getBillingCycleStart(), now);
+        if (age.toHours() < 24 && acc.getCreditsUsed() >= acc.getMonthlyQuota()) {
+            log.warn("RUNAWAY-FREE-TIER: tenant {} spent {}/{} credits within {}h of signup",
+                    tenantId, acc.getCreditsUsed(), acc.getMonthlyQuota(), age.toHours());
+        }
     }
 
     // ----- Async path -------------------------------------------------------

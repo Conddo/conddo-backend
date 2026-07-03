@@ -250,6 +250,19 @@ public class RegistrationService {
         active(registrationId);
     }
 
+    /** Records + returns the new classify-attempt count for {@code registrationId}.
+     *  Throws {@link RegistrationNotFoundException} when the registration is
+     *  unknown or completed. Callers cap on the returned int (default 5) —
+     *  the counter is persisted before we return so a caller that ignores the
+     *  cap can't burn through the AI budget by racing us. */
+    @Transactional
+    public int recordClassifyAttempt(UUID registrationId) {
+        PendingRegistration registration = active(registrationId);
+        int attempts = registration.recordClassifyAttempt();
+        registrations.save(registration);
+        return attempts;
+    }
+
     private String generateCode() {
         int bound = (int) Math.pow(10, otp.codeLength());
         return String.format("%0" + otp.codeLength() + "d", random.nextInt(bound));
