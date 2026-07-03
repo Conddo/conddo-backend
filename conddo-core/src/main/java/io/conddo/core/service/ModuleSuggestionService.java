@@ -6,6 +6,7 @@ import io.conddo.core.ai.AiCallContext;
 import io.conddo.core.ai.AiGateway;
 import io.conddo.core.ai.AnthropicGateway;
 import io.conddo.core.registry.ModuleCatalogue;
+import io.conddo.core.registry.VerticalKeywordMatcher;
 import io.conddo.core.registry.VerticalDataLoader;
 import io.conddo.core.registry.VerticalDefinition;
 import org.slf4j.Logger;
@@ -38,12 +39,15 @@ public class ModuleSuggestionService {
     private final AiGateway aiGateway;
     private final VerticalDataLoader verticals;
     private final ObjectMapper objectMapper;
+    private final VerticalKeywordMatcher keywordMatcher;
 
     public ModuleSuggestionService(AiGateway aiGateway, VerticalDataLoader verticals,
-                                    ObjectMapper objectMapper) {
+                                    ObjectMapper objectMapper,
+                                    VerticalKeywordMatcher keywordMatcher) {
         this.aiGateway = aiGateway;
         this.verticals = verticals;
         this.objectMapper = objectMapper;
+        this.keywordMatcher = keywordMatcher;
     }
 
     /** Convenience for the tenant-scoped path — the caller passes their
@@ -55,7 +59,8 @@ public class ModuleSuggestionService {
         }
         Set<String> moduleIds = allKnownModuleIds();
         Set<String> verticalIds = allKnownVerticalIds();
-        String prompt = buildPrompt(description, verticalHint, moduleIds, verticalIds);
+        List<VerticalKeywordMatcher.Match> keywordMatches = keywordMatcher.topMatches(description);
+        String prompt = buildPrompt(description, verticalHint, moduleIds, verticalIds, keywordMatches);
         String raw = aiGateway.chatText(ctx, prompt);
         Parsed parsed = parseResponse(raw, moduleIds, verticalIds);
         return new Result(parsed.scores, parsed.vertical, parsed.verticalConfidence);
@@ -91,7 +96,8 @@ public class ModuleSuggestionService {
     }
 
     private String buildPrompt(String description, String verticalHint,
-                               Set<String> moduleIds, Set<String> verticalIds) {
+                               Set<String> moduleIds, Set<String> verticalIds,
+                               List<VerticalKeywordMatcher.Match> keywordMatches) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are helping classify a business onto Conddo, a software platform ")
                 .append("that provides modular capability tools to small/medium businesses.\n\n");
@@ -100,6 +106,18 @@ public class ModuleSuggestionService {
             VerticalDefinition v = verticals.all().get(verticalHint.toLowerCase());
             sb.append("The tenant self-identifies their vertical as: ").append(v.name())
                     .append(" (id=").append(v.id()).append("). Use this as a strong prior.\n\n");
+        }
+        // Keyword-scan prior — the highest-scoring vertical is usually right, but
+        // the LLM makes the final call so genuinely-ambiguous descriptions
+        // (a marketing consultancy that used the word "shop" once) don't lock in.
+        if (!keywordMatches.isEmpty()) {
+            sb.append("Independent keyword scan of the description matched these verticals ")
+                    .append("(higher score = more domain-specific terms present). Use as a strong signal ")
+                    .append("but override if the description as a whole clearly points elsewhere:\n");
+            for (VerticalKeywordMatcher.Match m : keywordMatches) {
+                sb.append("- ").append(m.verticalId()).append(" (score ").append(m.score()).append(")\n");
+            }
+            sb.append("\n");
         }
         sb.append("Below is the catalogue of every capability module available. For each module, ")
                 .append("score 0.0–1.0 confidence that this business would use it. Higher = more likely.\n\n");
