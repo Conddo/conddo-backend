@@ -159,27 +159,13 @@ public class FashionOrder {
     }
 
     /** Inner class for fashion order item with size/color selection. */
-    @Embeddable
     public static class FashionOrderItem {
-        @Column(name = "shoe_id")
         private UUID shoeId;
-
-        @Column(name = "shoe_name")
         private String shoeName;
-
-        @Column(name = "size")
         private String size;
-
-        @Column(name = "color")
         private String color;
-
-        @Column(name = "quantity")
         private int quantity;
-
-        @Column(name = "unit_price")
         private BigDecimal unitPrice;
-
-        @Column(name = "total_price")
         private BigDecimal totalPrice;
 
         protected FashionOrderItem() {

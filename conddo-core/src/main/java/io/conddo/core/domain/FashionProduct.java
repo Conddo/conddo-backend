@@ -173,15 +173,9 @@ public class FashionProduct {
     }
 
     /** Inner class for size/color variant stored as JSON. */
-    @Embeddable
     public static class SizeColorVariant {
-        @Column(name = "size")
         private String size;
-
-        @Column(name = "color")
         private String color;
-
-        @Column(name = "stock")
         private int stock;
 
         protected SizeColorVariant() {
