@@ -23,7 +23,7 @@ import java.util.Optional;
  * the bell-feed + email + SMS dispatch for a single subscription transition.
  *
  * <p>Lives in its own component so the {@link BillingExpiryScheduler} can
- * invoke it through the Spring proxy — a {@code @Transactional} method on
+ * invoke it through the Spring proxy — a {@code @Transactional} method on 
  * the same bean as the scheduler would self-invoke and miss the
  * {@code REQUIRES_NEW} boundary, leaving the {@code tenantSession.bind()}
  * call running outside any transaction. 
