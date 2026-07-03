@@ -61,6 +61,22 @@ public class User implements LockableAccount {
     @Column(name = "phone_verified", nullable = false)
     private boolean phoneVerified = false;
 
+    /** Whether the user has clicked the post-onboarding email verification
+     *  link. False for accounts created via the Onboarding v2 low-friction
+     *  path until they redeem the link; True for legacy accounts (grandfathered
+     *  by V55 migration) and staff invitees. Gates publish / payments /
+     *  automations on the FE. */
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = false;
+
+    /** BCrypt hash of the token embedded in the verification link — null once
+     *  redeemed or if no link is currently outstanding. */
+    @Column(name = "email_verification_token_hash", length = 80)
+    private String emailVerificationTokenHash;
+
+    @Column(name = "email_verification_expires_at")
+    private OffsetDateTime emailVerificationExpiresAt;
+
     @Column(name = "last_login_at")
     private OffsetDateTime lastLoginAt;
 
@@ -213,6 +229,32 @@ public class User implements LockableAccount {
 
     public void markPhoneVerified() {
         this.phoneVerified = true;
+    }
+
+    /** Store the hash of a freshly issued verification token and its expiry.
+     *  Overwrites any outstanding one — a resend supersedes prior links. */
+    public void issueEmailVerificationToken(String tokenHash, OffsetDateTime expiresAt) {
+        this.emailVerificationTokenHash = tokenHash;
+        this.emailVerificationExpiresAt = expiresAt;
+    }
+
+    /** Flip to verified and clear the token so the same link can't be reused. */
+    public void markEmailVerified() {
+        this.emailVerified = true;
+        this.emailVerificationTokenHash = null;
+        this.emailVerificationExpiresAt = null;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public String getEmailVerificationTokenHash() {
+        return emailVerificationTokenHash;
+    }
+
+    public OffsetDateTime getEmailVerificationExpiresAt() {
+        return emailVerificationExpiresAt;
     }
 
     /**

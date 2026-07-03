@@ -11,6 +11,8 @@ public final class AuditActions {
     public static final String LOGOUT = "LOGOUT";
     public static final String SIGNUP_COMPLETED = "SIGNUP_COMPLETED";
     public static final String PASSWORD_RESET = "PASSWORD_RESET";
+    public static final String EMAIL_VERIFICATION_ISSUED = "EMAIL_VERIFICATION_ISSUED";
+    public static final String EMAIL_VERIFIED = "EMAIL_VERIFIED";
     public static final String CUSTOMER_CREATED = "CUSTOMER_CREATED";
 
     private AuditActions() {

@@ -51,6 +51,7 @@ public class RegistrationService {
     private final GoogleIdTokenVerifier googleVerifier;
     private final UserRepository userRepository;
     private final TenantSession tenantSession;
+    private final EmailVerificationService emailVerification;
     private final Clock clock;
 
     private final SecureRandom random = new SecureRandom();
@@ -62,7 +63,8 @@ public class RegistrationService {
                                io.conddo.core.service.ModuleResolver moduleResolver,
                                AuthProperties authProperties, OtpProperties otp,
                                GoogleIdTokenVerifier googleVerifier, UserRepository userRepository,
-                               TenantSession tenantSession, Clock clock) {
+                               TenantSession tenantSession, EmailVerificationService emailVerification,
+                               Clock clock) {
         this.registrations = registrations;
         this.passwordHasher = passwordHasher;
         this.notificationService = notificationService;
@@ -77,6 +79,7 @@ public class RegistrationService {
         this.googleVerifier = googleVerifier;
         this.userRepository = userRepository;
         this.tenantSession = tenantSession;
+        this.emailVerification = emailVerification;
         this.clock = clock;
     }
 
@@ -210,6 +213,21 @@ public class RegistrationService {
         }
         auditService.record(AuditActions.SIGNUP_COMPLETED, "TENANT", tenant.getId(),
                 tenant.getId(), admin.getId(), null, Map.of("businessName", businessName));
+
+        // Send the post-onboarding verification link. Only for accounts that
+        // took the low-friction path (require-otp-verify=false); OTP-verified
+        // accounts are already trusted. Best-effort — a Resend outage should
+        // not block the tenant from reaching their dashboard.
+        if (!authProperties.requireOtpVerify()) {
+            TenantContext.set(tenant.getId());
+            tenantSession.bind();
+            User freshAdmin = userRepository.findById(admin.getId()).orElse(admin);
+            try {
+                emailVerification.issueLink(freshAdmin);
+            } catch (RuntimeException ignored) {
+                // audit is intentional; the user can trigger a resend from the banner.
+            }
+        }
 
         String accessToken = jwtService.issueAccessToken(admin.getId(), admin.getTenantId(), admin.getRole(),
                 admin.getStaffRole(),

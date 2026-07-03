@@ -182,6 +182,26 @@ public class NotificationService {
         }
     }
 
+    /** Post-onboarding email verification — delivers the tokenized verify link.
+     *  The FE lands on /verify-email?token=…, calls GET /auth/verify-email, and
+     *  flips the user's email_verified flag. */
+    public void sendEmailVerification(String toEmail, String verifyToken, String displayName) {
+        String subject = "Verify your Conddo account";
+        String verifyUrl = appBaseUrl + "/verify-email?token=" + verifyToken;
+        String friendly = (displayName != null && !displayName.isBlank()) ? displayName : "there";
+        String text = "Hi " + friendly + ",\n\n"
+                + "Welcome to Conddo. Verify your email to unlock publishing, payments, and automations:\n"
+                + verifyUrl + "\n\n"
+                + "This link expires in 7 days. If you didn't sign up, you can safely ignore this email.";
+        String html = templates.render("email-verification.html",
+                Map.of("VERIFY_URL", verifyUrl, "NAME", friendly, "EXPIRY_DAYS", "7"));
+        if (html.isBlank()) {
+            emailSender.send(toEmail, subject, text);
+        } else {
+            emailSender.sendHtml(toEmail, subject, html, text);
+        }
+    }
+
     /** Password reset — delivers the reset token (and a reset link) by email. */
     public void sendPasswordReset(String toEmail, String resetToken) {
         String subject = "Reset your Conddo password";

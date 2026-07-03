@@ -113,6 +113,18 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("AUTH_INVALID_RESET_TOKEN", ex.getMessage())));
     }
 
+    @ExceptionHandler(io.conddo.core.auth.EmailVerificationInvalidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailVerifyInvalid(io.conddo.core.auth.EmailVerificationInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail(ApiError.of("EMAIL_VERIFICATION_INVALID", ex.getMessage())));
+    }
+
+    @ExceptionHandler(io.conddo.core.auth.EmailVerificationExpiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailVerifyExpired(io.conddo.core.auth.EmailVerificationExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(ApiResponse.fail(ApiError.of("EMAIL_VERIFICATION_EXPIRED", ex.getMessage())));
+    }
+
     @ExceptionHandler(InvalidOtpException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidOtp(InvalidOtpException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

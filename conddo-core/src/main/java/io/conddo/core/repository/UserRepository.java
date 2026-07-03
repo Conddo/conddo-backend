@@ -44,4 +44,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Query(value = "SELECT * FROM users WHERE email = :email LIMIT 1", nativeQuery = true)
     Optional<User> findFirstByEmailCrossTenant(@Param("email") String email);
+
+    /**
+     * Cross-tenant lookup for the email verification link redeem endpoint —
+     * caller has a live JWT but the token itself is the credential. Matches
+     * the V55 partial index on (email_verification_token_hash).
+     */
+    @Query(value = "SELECT * FROM users WHERE email_verification_token_hash = :tokenHash", nativeQuery = true)
+    Optional<User> findByEmailVerificationTokenHashCrossTenant(@Param("tokenHash") String tokenHash);
 }
