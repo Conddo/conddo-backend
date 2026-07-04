@@ -67,6 +67,39 @@ public class TenantSiteService {
     }
 
     /**
+     * Provision a managed website (Path A) for a freshly-created tenant with
+     * the AI-generated first draft. Caller is the async
+     * {@code TenantActivationListener}; runs cross-tenant since the async
+     * transaction runs without a bound context. Idempotent — no-op if the
+     * tenant already has a managed row.
+     */
+    @Transactional
+    public TenantSite provisionManagedSite(UUID tenantId, String subdomain,
+                                           java.util.Map<String, Object> draftSections,
+                                           java.util.Map<String, Object> draftTheme) {
+        tenantSession.bindCrossTenant();
+        try {
+            java.util.List<TenantSite> existing = repository.findAllByOrderByCreatedAtDesc();
+            for (TenantSite site : existing) {
+                if (tenantId.equals(site.getTenantId()) && site.isManaged()) {
+                    return site;
+                }
+            }
+            String normalised = SubdomainRules.normalise(subdomain);
+            if (!SubdomainRules.isValid(normalised)) {
+                // Pathological — the caller sends the tenant slug, which was
+                // validated at signup. Fall back to a random suffix so we
+                // never block the async flow.
+                normalised = "site-" + tenantId.toString().substring(0, 8);
+            }
+            TenantSite site = TenantSite.managed(tenantId, normalised, draftSections, draftTheme);
+            return repository.save(site);
+        } finally {
+            tenantSession.clearCrossTenant();
+        }
+    }
+
+    /**
      * Generate the first key for a tenant, OR rotate an existing key (the FE's
      * "Regenerate" button calls the same path). Returns the new plaintext key
      * exactly once — caller (controller) surfaces it in the response and the

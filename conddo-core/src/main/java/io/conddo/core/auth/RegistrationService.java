@@ -188,14 +188,16 @@ public class RegistrationService {
      *  is true; the low-friction flow defers verification to a post-onboarding
      *  email link. */
     @Transactional
-    public AuthResult complete(UUID registrationId, String businessName, String businessType, String planId) {
+    public AuthResult complete(UUID registrationId, String businessName, String businessType,
+                               String planId, String websiteVibe) {
         PendingRegistration registration = active(registrationId);
         if (authProperties.requireOtpVerify() && !registration.isPhoneVerified()) {
             throw new PhoneNotVerifiedException();
         }
         TenantService.Provisioned provisioned = tenantService.provisionFromRegistration(
                 businessName, businessType, planId, registration.getEmail(),
-                registration.getPasswordHash(), registration.getFullName(), registration.getPhone());
+                registration.getPasswordHash(), registration.getFullName(), registration.getPhone(),
+                websiteVibe);
         registration.markCompleted(OffsetDateTime.now(clock));
         registrations.save(registration);
 

@@ -5,6 +5,8 @@ import io.conddo.core.domain.Tenant;
 import io.conddo.core.payments.PaymentsGateway;
 import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.service.BillingService;
+import io.conddo.core.service.TenantSiteService;
+import io.conddo.core.service.WebsiteGenerationService;
 import io.conddo.core.signup.TenantActivatedEvent;
 import io.conddo.core.signup.WebsiteTypeRecommendation;
 import io.conddo.core.signup.WebsiteTypeResolver;
@@ -40,17 +42,23 @@ public class TenantActivationListener {
     private final StudioJobGateway studioJobGateway;
     private final PaymentsGateway paymentsGateway;
     private final BillingService billingService;
+    private final WebsiteGenerationService websiteGeneration;
+    private final TenantSiteService tenantSiteService;
 
     public TenantActivationListener(TenantRepository tenantRepository,
                                     WebsiteTypeResolver websiteTypeResolver,
                                     StudioJobGateway studioJobGateway,
                                     PaymentsGateway paymentsGateway,
-                                    BillingService billingService) {
+                                    BillingService billingService,
+                                    WebsiteGenerationService websiteGeneration,
+                                    TenantSiteService tenantSiteService) {
         this.tenantRepository = tenantRepository;
         this.websiteTypeResolver = websiteTypeResolver;
         this.studioJobGateway = studioJobGateway;
         this.paymentsGateway = paymentsGateway;
         this.billingService = billingService;
+        this.websiteGeneration = websiteGeneration;
+        this.tenantSiteService = tenantSiteService;
     }
 
     @Async
@@ -119,6 +127,33 @@ public class TenantActivationListener {
                     sub.getStatus(), tenant.getId(), tenant.getPlanId(), sub.getExpiresAt());
         } catch (RuntimeException ex) {
             log.error("Auto-start trial failed for tenant {}: {}", event.tenantId(), ex.getMessage());
+        }
+    }
+
+    /**
+     * Fourth handler on the same event: seed the managed website — call the
+     * AI generator with the tenant's name + vertical + vibe, save as a draft
+     * on tenant_sites. Free (bundled with the AI provisioning charge that's
+     * already been booked at tenant creation). Fully fail-safe: an LLM
+     * outage falls through the generator's rule-based stub, and a save
+     * failure just logs — the tenant can still complete signup.
+     */
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onTenantActivated_generateWebsite(TenantActivatedEvent event) {
+        try {
+            Tenant tenant = tenantRepository.findById(event.tenantId())
+                    .orElseThrow(() -> new NotFoundException("Tenant " + event.tenantId() + " vanished"));
+            WebsiteGenerationService.Generated generated = websiteGeneration.generate(
+                    tenant.getName(), tenant.getVerticalId(), tenant.getWebsiteVibe());
+            tenantSiteService.provisionManagedSite(
+                    tenant.getId(), tenant.getSlug(),
+                    generated.sections(), generated.theme());
+            log.info("Managed site draft seeded for tenant {} (slug={}, sections={})",
+                    tenant.getId(), tenant.getSlug(), generated.sections().keySet());
+        } catch (RuntimeException ex) {
+            log.error("Auto-seed managed site failed for tenant {}: {}", event.tenantId(), ex.getMessage());
         }
     }
 

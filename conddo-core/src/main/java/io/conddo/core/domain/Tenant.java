@@ -54,6 +54,13 @@ public class Tenant {
     @Column(name = "website_published_at")
     private OffsetDateTime websitePublishedAt;
 
+    /** Free-text vibe prompt captured at onboarding step 5 — feeds the
+     *  WebsiteGenerationService's initial pass + future AI copy passes.
+     *  Nullable; a blank vibe means "no strong preference, use vertical
+     *  defaults". */
+    @Column(name = "website_vibe")
+    private String websiteVibe;
+
     /** Setup-checklist steps (§11.1) the owner has explicitly dismissed. */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "setup_dismissed")
@@ -187,6 +194,14 @@ public class Tenant {
 
     public void setWebsitePublishedAt(OffsetDateTime websitePublishedAt) {
         this.websitePublishedAt = websitePublishedAt;
+    }
+
+    public String getWebsiteVibe() {
+        return websiteVibe;
+    }
+
+    public void setWebsiteVibe(String websiteVibe) {
+        this.websiteVibe = websiteVibe;
     }
 
     public List<String> getSetupDismissed() {

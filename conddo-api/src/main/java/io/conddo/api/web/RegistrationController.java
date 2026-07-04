@@ -74,7 +74,8 @@ public class RegistrationController {
     @PostMapping("/complete")
     public ResponseEntity<ApiResponse<LoginResponse>> complete(@Valid @RequestBody CompleteRegistrationRequest request) {
         AuthResult result = registrationService.complete(
-                request.registrationId(), request.businessName(), request.businessType(), request.planId());
+                request.registrationId(), request.businessName(), request.businessType(),
+                request.planId(), request.websiteVibe());
         ResponseCookie cookie = refreshCookies.issue(result.refreshToken(), result.refreshTokenTtl());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())

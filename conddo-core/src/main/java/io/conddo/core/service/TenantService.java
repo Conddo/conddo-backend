@@ -80,7 +80,8 @@ public class TenantService {
     @Transactional
     public Provisioned provisionFromRegistration(String businessName, String verticalId, String planId,
                                                  String adminEmail, String adminPasswordHash,
-                                                 String adminFullName, String adminPhone) {
+                                                 String adminFullName, String adminPhone,
+                                                 String websiteVibe) {
         // V50 — same guard as create(). RegistrationService.start
         // pre-checks but a same-email race during the 5-min OTP
         // window would otherwise hit the DB constraint as a 500.
@@ -89,8 +90,11 @@ public class TenantService {
             throw new io.conddo.core.auth.EmailAlreadyInUseException(adminEmail);
         }
         tenantSession.clearCrossTenant();
-        Tenant tenant = tenantRepository.save(
-                new Tenant(businessName, uniqueSlug(businessName), verticalId, planId));
+        Tenant tenant = new Tenant(businessName, uniqueSlug(businessName), verticalId, planId);
+        if (websiteVibe != null && !websiteVibe.isBlank()) {
+            tenant.setWebsiteVibe(websiteVibe.trim());
+        }
+        tenant = tenantRepository.save(tenant);
         User admin = persistAdmin(tenant, adminEmail, adminPasswordHash, adminFullName, adminPhone, true);
         creditService.provisionAccount(tenant.getId());
         events.publishEvent(new TenantActivatedEvent(tenant.getId()));

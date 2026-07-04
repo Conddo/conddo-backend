@@ -14,6 +14,10 @@ public record CompleteRegistrationRequest(
         @NotNull UUID registrationId,
         @NotBlank String businessName,
         String businessType,
-        String planId
+        String planId,
+        /** Freeform "vibe" captured at onboarding step 5 — feeds the initial
+         *  website generation. Optional: null / blank falls back to vertical
+         *  defaults in {@code WebsiteGenerationService}. */
+        String websiteVibe
 ) {
 }
