@@ -83,6 +83,12 @@ conddo:
     max-tokens: ${CONDDO_OPENROUTER_MAX_TOKENS:1024}
     referer: ${CONDDO_OPENROUTER_REFERER:https://getconddo.com}
     app-title: ${CONDDO_OPENROUTER_APP_TITLE:Conddo}
+    # Per-action model overrides (see AiModelSelector). Any left blank falls
+    # back to the global `model` above. Pick from any OpenRouter model slug.
+    model-classifier: ${CONDDO_OPENROUTER_MODEL_CLASSIFIER:}
+    model-website:    ${CONDDO_OPENROUTER_MODEL_WEBSITE:}
+    model-marketing:  ${CONDDO_OPENROUTER_MODEL_MARKETING:}
+    model-brief:      ${CONDDO_OPENROUTER_MODEL_BRIEF:}
   anthropic:
     base-url: ${CONDDO_ANTHROPIC_BASE_URL:https://api.anthropic.com}
     api-key: ${CONDDO_ANTHROPIC_API_KEY:}

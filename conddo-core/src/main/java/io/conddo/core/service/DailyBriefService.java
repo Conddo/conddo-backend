@@ -2,6 +2,7 @@ package io.conddo.core.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.core.ai.AiModelSelector;
 import io.conddo.core.ai.AnthropicGateway;
 import io.conddo.core.domain.Customer;
 import io.conddo.core.domain.DailyBrief;
@@ -53,6 +54,7 @@ public class DailyBriefService {
     private final TenantRepository tenantRepository;
     private final TenantSession tenantSession;
     private final AnthropicGateway llm;
+    private final AiModelSelector modelSelector;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -62,6 +64,7 @@ public class DailyBriefService {
                              TenantRepository tenantRepository,
                              TenantSession tenantSession,
                              AnthropicGateway llm,
+                             AiModelSelector modelSelector,
                              ObjectMapper objectMapper,
                              Clock clock) {
         this.briefs = briefs;
@@ -70,6 +73,7 @@ public class DailyBriefService {
         this.tenantRepository = tenantRepository;
         this.tenantSession = tenantSession;
         this.llm = llm;
+        this.modelSelector = modelSelector;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -150,7 +154,7 @@ public class DailyBriefService {
             return fallback(snapshot);
         }
         try {
-            String raw = llm.chatText(prompt);
+            String raw = llm.chatText(prompt, modelSelector.modelFor("daily.brief"));
             JsonNode root = objectMapper.readTree(extractJsonObject(raw));
             String headline = root.path("headline").asText("").trim();
             String body = root.path("body").asText("").trim();

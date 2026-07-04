@@ -95,20 +95,27 @@ public class HttpOpenRouterGateway implements AnthropicGateway {
 
     @Override
     public String chatText(String prompt) {
-        // Plain string content works fine for OpenAI-style endpoints —
-        // no need for the content-blocks array on a text-only call.
+        return chatText(prompt, null);
+    }
+
+    /** Honors the per-call model override so the routing layer can pick a
+     *  cheaper / smarter model per action type without touching config. */
+    @Override
+    public String chatText(String prompt, String modelOverride) {
         Map<String, Object> message = Map.of("role", "user", "content", prompt);
-        return callChatCompletionsRaw(List.of(message), true);
+        return callChatCompletionsRaw(List.of(message), true, modelOverride);
     }
 
     private String callChatCompletions(List<Map<String, Object>> content, boolean jsonResponse) {
         Map<String, Object> message = Map.of("role", "user", "content", content);
-        return callChatCompletionsRaw(List.of(message), jsonResponse);
+        return callChatCompletionsRaw(List.of(message), jsonResponse, null);
     }
 
-    private String callChatCompletionsRaw(List<Map<String, Object>> messages, boolean jsonResponse) {
+    private String callChatCompletionsRaw(List<Map<String, Object>> messages, boolean jsonResponse,
+                                          String modelOverride) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", model);
+        String effectiveModel = (modelOverride != null && !modelOverride.isBlank()) ? modelOverride : model;
+        body.put("model", effectiveModel);
         body.put("max_tokens", maxTokens);
         body.put("messages", messages);
         if (jsonResponse) {

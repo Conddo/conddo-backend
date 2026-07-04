@@ -19,6 +19,16 @@ public interface AnthropicGateway {
     /** Pure text call — used by the description generation endpoint. */
     String chatText(String prompt);
 
+    /** Per-call model override — lets the routing layer pick a different
+     *  model for different actions (Sonnet for website copy, DeepSeek for
+     *  the classifier, Flash for marketing snippets) without a code change.
+     *  Default falls back to {@link #chatText(String)} so any legacy adapter
+     *  keeps working; only {@code HttpOpenRouterGateway} actually honors
+     *  the override. Pass {@code null} to use the adapter's default model. */
+    default String chatText(String prompt, String modelOverride) {
+        return chatText(prompt);
+    }
+
     /** Thrown when Anthropic returns an error or the call times out. */
     class AnthropicUnavailableException extends RuntimeException {
         public AnthropicUnavailableException(String message) {
