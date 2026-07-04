@@ -124,7 +124,7 @@ public class DailyBriefService {
                 .limit(5)
                 .map(c -> {
                     Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("name", c.getName());
+                    row.put("name", c.getFullName());
                     row.put("added", c.getCreatedAt() != null ? c.getCreatedAt().toString() : null);
                     return row;
                 })
