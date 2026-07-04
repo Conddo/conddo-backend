@@ -83,9 +83,12 @@ public class CreditedAiGateway implements AiGateway {
 
     /** Convenience for the Daily Brief and other scheduled surfaces —
      *  binds a fresh AiCallContext at each call site so callers can't forget
-     *  the actionType. */
+     *  the actionType. Uses SOCIAL_AI_SCHEDULE as the closest existing
+     *  action; callers of this shortcut should pass their real action once
+     *  the moat surface (Daily Brief, Nudge Queue, etc.) has a canonical
+     *  credit-charged entry. */
     public String daily(UUID tenantId, String prompt) {
-        AiCallContext ctx = AiCallContext.forTenant(tenantId, null, CreditActions.AI_MARKETING_MESSAGE);
+        AiCallContext ctx = AiCallContext.forTenant(tenantId, null, CreditActions.SOCIAL_AI_SCHEDULE);
         return chatText(ctx, prompt);
     }
 }
