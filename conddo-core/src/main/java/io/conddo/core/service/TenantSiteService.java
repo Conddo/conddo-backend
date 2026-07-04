@@ -67,6 +67,47 @@ public class TenantSiteService {
     }
 
     /**
+     * Read the current tenant's managed site (draft + live) for the
+     * dashboard editor / preview surface. RLS-scoped so a tenant only ever
+     * sees their own row; returns empty when the site hasn't been
+     * provisioned yet (rare — activation seeds it, but a legacy tenant
+     * might not have one).
+     */
+    @Transactional(readOnly = true)
+    public Optional<TenantSite> currentManagedSite() {
+        tenantSession.bind();
+        return repository.findFirstByOrderByCreatedAtDesc()
+                .filter(TenantSite::isManaged);
+    }
+
+    /**
+     * Promote the tenant's draft to live. Stamps {@code published_at} so the
+     * public renderer's partial index picks the row up. Idempotent: publishing
+     * a site that already matches the draft just moves the timestamp forward,
+     * which is the correct "I re-checked and it's still good" behavior.
+     *
+     * <p>Throws {@link ManagedSiteMissingException} if the tenant has no
+     * managed row (which is a "onboarding didn't provision one" situation
+     * that the FE surfaces distinctly from a normal error).
+     */
+    @Transactional
+    public TenantSite publishDraft() {
+        tenantSession.bind();
+        TenantSite site = repository.findFirstByOrderByCreatedAtDesc()
+                .filter(TenantSite::isManaged)
+                .orElseThrow(ManagedSiteMissingException::new);
+        site.publishDraft(java.time.OffsetDateTime.now());
+        return repository.save(site);
+    }
+
+    /** Thrown when the tenant tries to publish but no managed site exists. */
+    public static class ManagedSiteMissingException extends RuntimeException {
+        public ManagedSiteMissingException() {
+            super("This account has no managed website yet");
+        }
+    }
+
+    /**
      * Provision a managed website (Path A) for a freshly-created tenant with
      * the AI-generated first draft. Caller is the async
      * {@code TenantActivationListener}; runs cross-tenant since the async

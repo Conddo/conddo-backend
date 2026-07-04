@@ -133,6 +133,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("CREDITS_EXHAUSTED", ex.getMessage())));
     }
 
+    @ExceptionHandler(io.conddo.core.service.TenantSiteService.ManagedSiteMissingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleManagedSiteMissing(
+            io.conddo.core.service.TenantSiteService.ManagedSiteMissingException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.fail(ApiError.of("MANAGED_SITE_MISSING", ex.getMessage())));
+    }
+
     @ExceptionHandler(io.conddo.core.ai.EmailVerificationRequiredException.class)
     public ResponseEntity<ApiResponse<Void>> handleEmailVerifyRequired(io.conddo.core.ai.EmailVerificationRequiredException ex) {
         // 403 Forbidden — the FE keys on this code to point the user at

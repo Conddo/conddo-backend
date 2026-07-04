@@ -3,6 +3,8 @@ package io.conddo.api.web;
 import io.conddo.api.web.dto.ConnectDomainBody;
 import io.conddo.api.web.dto.WebsiteChangeRequestBody;
 import io.conddo.core.common.ApiResponse;
+import io.conddo.core.domain.TenantSite;
+import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.service.WebsiteService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -31,10 +33,53 @@ public class WebsiteController {
     private static final String WRITE = "hasAnyRole('TENANT_ADMIN','SUPER_ADMIN')";
 
     private final WebsiteService websiteService;
+    private final TenantSiteService tenantSiteService;
 
-    public WebsiteController(WebsiteService websiteService) {
+    public WebsiteController(WebsiteService websiteService, TenantSiteService tenantSiteService) {
         this.websiteService = websiteService;
+        this.tenantSiteService = tenantSiteService;
     }
+
+    // ---------- managed website (Path A) ------------------------------------
+
+    /**
+     * Read the managed site (draft + live). Feeds the dashboard preview +
+     * publish button. Returns {@code null} data when the tenant has no
+     * managed row (legacy tenants pre-V60).
+     */
+    @GetMapping("/managed")
+    @PreAuthorize(READ)
+    public ApiResponse<java.util.Map<String, Object>> managed() {
+        return tenantSiteService.currentManagedSite()
+                .map(WebsiteController::toManagedDto)
+                .map(ApiResponse::ok)
+                .orElseGet(() -> ApiResponse.ok(null));
+    }
+
+    /**
+     * Publish the draft to live. Owner-only — the sub-role check is enforced
+     * upstream by {@link org.springframework.security.access.prepost.PreAuthorize}.
+     */
+    @PostMapping("/publish")
+    @PreAuthorize(WRITE)
+    public ApiResponse<java.util.Map<String, Object>> publish() {
+        TenantSite site = tenantSiteService.publishDraft();
+        return ApiResponse.ok(toManagedDto(site));
+    }
+
+    private static java.util.Map<String, Object> toManagedDto(TenantSite site) {
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("subdomain", site.getSubdomain());
+        resp.put("customDomain", site.getCustomDomain());
+        resp.put("publishedAt", site.getPublishedAt() != null ? site.getPublishedAt().toString() : null);
+        resp.put("draftSections", site.getDraftSections());
+        resp.put("draftTheme", site.getDraftTheme());
+        resp.put("sections", site.getSections());
+        resp.put("theme", site.getTheme());
+        return resp;
+    }
+
+    // ---------- legacy website (Path B, unchanged) --------------------------
 
     /** Site config: {@code {subdomain, customDomain, status, publishedAt}}. */
     @GetMapping
