@@ -20,6 +20,29 @@ public interface TenantSiteRepository extends JpaRepository<TenantSite, UUID> {
     /** Public traffic resolver — used inside a non-tenant-bound query. */
     Optional<TenantSite> findBySubdomain(String subdomain);
 
+    /** Public managed-site resolver — matches only sites that have been
+     *  published at least once. Uses the partial index added in V60. */
+    @org.springframework.data.jpa.repository.Query(value = """
+            SELECT * FROM tenant_sites
+             WHERE managed = TRUE
+               AND published_at IS NOT NULL
+               AND subdomain = :subdomain
+             LIMIT 1
+            """, nativeQuery = true)
+    Optional<TenantSite> findPublishedManagedBySubdomain(
+            @org.springframework.data.repository.query.Param("subdomain") String subdomain);
+
+    /** Custom-domain resolver — for tenants who have hooked up their own
+     *  domain via a CNAME. Only matches published rows. */
+    @org.springframework.data.jpa.repository.Query(value = """
+            SELECT * FROM tenant_sites
+             WHERE published_at IS NOT NULL
+               AND custom_domain = :customDomain
+             LIMIT 1
+            """, nativeQuery = true)
+    Optional<TenantSite> findPublishedByCustomDomain(
+            @org.springframework.data.repository.query.Param("customDomain") String customDomain);
+
     // ----- staff / admin (cross-tenant; needs app.cross_tenant=true) ---------
 
     java.util.List<TenantSite> findByQaApprovedFalseOrderByCreatedAtDesc();

@@ -39,6 +39,11 @@ public class BillingWebConfig implements WebMvcConfigurer {
         // and predate the API-key flow.
         registry.addInterceptor(publicSite)
                 .addPathPatterns("/api/v1/public/**")
-                .excludePathPatterns("/api/v1/public/tenant/**", "/api/v1/public/book/**");
+                .excludePathPatterns(
+                        "/api/v1/public/tenant/**",
+                        "/api/v1/public/book/**",
+                        // Managed website renderer — public HTML anyway, no API
+                        // key needed. See PublicManagedSiteController.
+                        "/api/v1/public/managed-site/**");
     }
 }

@@ -137,6 +137,40 @@ public class TenantSiteService {
     // ----- public resolver ---------------------------------------------------
 
     /**
+     * Public managed-site resolver — for the {@code <slug>.getconddo.com}
+     * renderer. No API key: sites are public HTML. Uses the same RLS
+     * carve-out as {@link #resolveBySubdomain} but scoped to published
+     * managed rows via the V60 partial indexes.
+     *
+     * <p>Host may be a subdomain of the platform ({@code shop.getconddo.com})
+     * or a fully-verified custom domain ({@code amakastore.com}). Returns
+     * the matching site or empty.
+     */
+    @Transactional(readOnly = true)
+    public Optional<TenantSite> resolvePublicHost(String host) {
+        if (host == null || host.isBlank()) {
+            return Optional.empty();
+        }
+        String normalized = host.trim().toLowerCase();
+        // Strip an optional :port and www. prefix so DNS quirks don't dead-end.
+        int colon = normalized.indexOf(':');
+        if (colon > 0) normalized = normalized.substring(0, colon);
+        if (normalized.startsWith("www.")) normalized = normalized.substring(4);
+
+        entityManager.createNativeQuery("SELECT set_config('app.public_resolver', 'true', true)")
+                .getSingleResult();
+
+        // Try subdomain first — the most common path for managed sites.
+        String platformDomain = ".getconddo.com";
+        if (normalized.endsWith(platformDomain)) {
+            String slug = normalized.substring(0, normalized.length() - platformDomain.length());
+            return repository.findPublishedManagedBySubdomain(slug);
+        }
+        // Fall back to custom-domain match.
+        return repository.findPublishedByCustomDomain(normalized);
+    }
+
+    /**
      * Public traffic resolution. The header API key must bcrypt-match the
      * stored hash, the site must be active + qa_approved. Bypasses RLS via
      * the V25 {@code app.public_resolver} carve-out — this runs before tenant
