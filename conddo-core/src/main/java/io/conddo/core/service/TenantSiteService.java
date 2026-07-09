@@ -208,6 +208,43 @@ public class TenantSiteService {
         return repository.save(site);
     }
 
+    /**
+     * <b>Self-service activation</b> — the tenant confirms their externally-
+     * built site is live at {@code submittedUrl} and flips it to active in one
+     * call. No Studio staff approval required for their own site: the site key
+     * is bcrypt-hashed, so a wrong URL just serves the public API to an
+     * unintended host without ever exposing the secret.
+     *
+     * <p>QA-approve stays a separate SUPER_ADMIN concern (badge / listing on
+     * the platform-run "Sites we love" showcase) — this method only affects
+     * whether the tenant's own site key resolves.
+     */
+    @Transactional
+    public TenantSite selfActivate(String submittedUrl) {
+        tenantSession.bind();
+        TenantSite site = submitForReview(submittedUrl);
+        // Owner-triggered — mark active immediately. QA approval is a separate
+        // platform-side signal and stays unset here.
+        site.activate();
+        return repository.save(site);
+    }
+
+    /** Owner-triggered deactivate — takes the tenant's site key offline
+     *  without wiping the record. Idempotent. */
+    @Transactional
+    public TenantSite selfDeactivate() {
+        tenantSession.bind();
+        TenantSite site = repository.findFirstByOrderByCreatedAtDesc()
+                .orElseThrow(() -> new NoSiteException("No site to deactivate"));
+        site.deactivate();
+        return repository.save(site);
+    }
+
+    /** Thrown when a self-* operation has no site row to act on. */
+    public static class NoSiteException extends RuntimeException {
+        public NoSiteException(String message) { super(message); }
+    }
+
     // ----- public resolver ---------------------------------------------------
 
     /**

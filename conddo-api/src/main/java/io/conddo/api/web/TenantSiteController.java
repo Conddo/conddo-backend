@@ -78,6 +78,30 @@ public class TenantSiteController {
         return ApiResponse.ok(TenantSiteDto.masked(updated));
     }
 
+    /**
+     * <b>Self-service activation.</b> Tenant confirms their site is live at
+     * the given URL and flips it to active in one call — no Studio approval
+     * required for their own site. The site key is bcrypt-hashed, so an
+     * incorrect URL just leaves the public API responsive to any host
+     * without leaking the secret. QA-approve stays a SUPER_ADMIN-only path
+     * for the platform-side "featured sites" showcase.
+     */
+    @PostMapping("/activate")
+    @PreAuthorize(ADMIN_ONLY)
+    public ApiResponse<TenantSiteDto> activate(@Valid @RequestBody SubmitSiteRequest body) {
+        TenantSite updated = service.selfActivate(body.submittedUrl());
+        return ApiResponse.ok(TenantSiteDto.masked(updated));
+    }
+
+    /** Take the tenant's site key offline without deleting the record.
+     *  Idempotent. */
+    @PostMapping("/deactivate")
+    @PreAuthorize(ADMIN_ONLY)
+    public ApiResponse<TenantSiteDto> deactivate() {
+        TenantSite updated = service.selfDeactivate();
+        return ApiResponse.ok(TenantSiteDto.masked(updated));
+    }
+
     public record UpdateSiteRequest(@NotBlank String subdomain) {
     }
 

@@ -121,11 +121,24 @@ public class SecurityConfig {
             config.setAllowedOriginPatterns(properties.allowedOriginPatterns());
         }
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Act-As-Tenant"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type",
+                "X-Act-As-Tenant", "X-Conddo-Site-Key"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
+
+        // Merchant sites need to call /api/v1/public/** from any origin —
+        // that's the whole point of the site-key auth. Credentials false
+        // (the key rides in a header, not a cookie), origin patterns
+        // wide open (site-key IS the security boundary).
+        CorsConfiguration publicApi = new CorsConfiguration();
+        publicApi.setAllowedOriginPatterns(List.of("*"));
+        publicApi.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        publicApi.setAllowedHeaders(List.of("Content-Type", "X-Conddo-Site-Key"));
+        publicApi.setAllowCredentials(false);
+        publicApi.setMaxAge(3600L);
+        source.registerCorsConfiguration("/api/v1/public/**", publicApi);
         return source;
     }
 
