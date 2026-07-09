@@ -1,0 +1,56 @@
+id: real-estate
+name: Real Estate
+aliases:
+  - realtor
+  - property
+
+# Real estate is a domain of its own — properties are richer than
+# generic inventory (photos, floor plan, C of O status), the sales
+# funnel is a deals pipeline (not orders), and viewings are bookings
+# tied to a specific property. Starter includes the essentials;
+# business tier adds document + commission tracking; pro layer adds
+# lease + owner management for property management companies.
+tools:
+  starter:
+    - website
+    - crm
+    - properties
+    - viewings
+    - deals
+    - payments
+    - marketing.leads
+  business:
+    - contracts
+    - commissions
+    - staff
+    - marketing.social
+    - marketing.email
+    - marketing.sms
+    - analytics
+  pro:
+    - rentals
+    - owners
+    - marketing.ads
+
+# Deal stages — Nigerian real estate cadence. Deposit-paid is the
+# lock-in moment when commission accrues, not signature.
+dealStages:
+  - Lead
+  - Viewing scheduled
+  - Viewed
+  - Offer made
+  - Deposit paid
+  - Documentation
+  - Signed
+  - Closed
+
+measurementFields: []
+
+websiteSections:
+  - hero
+  - featured-properties
+  - browse-by-location
+  - browse-by-type
+  - agents
+  - about
+  - contact

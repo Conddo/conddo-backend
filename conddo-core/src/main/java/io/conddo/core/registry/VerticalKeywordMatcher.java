@@ -141,6 +141,29 @@ public final class VerticalKeywordMatcher {
                 Term.of("provisions", 3)
         ));
 
+        // ---- Real Estate ---------------------------------------------------
+        // Estate agents, property developers, property management companies.
+        // Nigerian-specific vocabulary — C of O + Governor's consent +
+        // NIS docs — signal harder than generic "property".
+        map.put("real-estate", List.of(
+                Term.of("real estate", 3), Term.of("realtor", 3),
+                Term.of("property", 2), Term.of("properties", 2),
+                Term.of("estate agent", 3), Term.of("landlord", 3),
+                Term.of("rental", 2), Term.of("rentals", 3),
+                Term.of("apartment", 2), Term.of("duplex", 3),
+                Term.of("bungalow", 3), Term.of("terrace", 2),
+                Term.of("self-con", 3), Term.of("self-contain", 3),
+                Term.of("plot", 2), Term.of("acre", 2),
+                Term.of("survey plan", 3), Term.of("c of o", 3),
+                Term.of("certificate of occupancy", 3),
+                Term.of("deed of assignment", 3),
+                Term.of("governor's consent", 3),
+                Term.of("gazette", 2), Term.of("tenant", 2),
+                Term.of("lease", 2), Term.of("mortgage", 2),
+                Term.of("bedroom", 1), Term.of("bathroom", 1),
+                Term.of("furnished", 2), Term.of("serviced", 2)
+        ));
+
         return map;
     }
 

@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.Optional;
 
 /**
@@ -56,7 +55,7 @@ public class BillingExpiryNotifier {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void notify(TransitionResult t) {
+    public void noti fy(TransitionResult t) {
         if (!"grace".equals(t.toStatus()) && !"expired".equals(t.toStatus())) {
             // Cancelled-completion is silent (merchant initiated it).
             return;

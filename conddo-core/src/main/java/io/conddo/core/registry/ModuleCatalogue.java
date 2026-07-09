@@ -51,6 +51,14 @@ public final class ModuleCatalogue {
         d.put("ecommerce", "Online storefront with checkout");
         d.put("tracking.advanced", "Advanced logistics tracking — live GPS, ETA, proof-of-delivery");
         d.put("music-school", "Music lesson scheduling for music schools");
+        // Real Estate vertical modules
+        d.put("properties", "Property listings — houses, land, commercial, with photos + location + status");
+        d.put("viewings", "Property viewings — bookings tied to a specific property + agent");
+        d.put("deals", "Deal pipeline — offer, deposit, documentation, close (with agent + commission)");
+        d.put("contracts", "Legal document management — C of O, Deed of Assignment, Tenancy Agreement");
+        d.put("commissions", "Agent commission tracking — % of deal, splits, payout on deposit received");
+        d.put("rentals", "Rental lease management — periodic rent, arrears, remittance to owner");
+        d.put("owners", "Property owner records for management companies");
         DESCRIPTIONS = Map.copyOf(d);
     }
 
