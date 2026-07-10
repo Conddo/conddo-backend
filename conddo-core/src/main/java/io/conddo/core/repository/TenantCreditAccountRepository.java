@@ -96,4 +96,22 @@ public interface TenantCreditAccountRepository extends JpaRepository<TenantCredi
     int rollCycle(@Param("tenantId") UUID tenantId,
                   @Param("now") OffsetDateTime now,
                   @Param("nextEnd") OffsetDateTime nextEnd);
-}
+
+    // ----- Platform overview (Studio dashboard) -----------------------------
+
+    /** Total credits consumed across the platform in the current cycles.
+     *  Sum of every tenant's credits_used, ignoring tier — because Studio
+     *  wants the raw burn number to compare against OpenRouter's bill. */
+    @Query(value = "SELECT COALESCE(SUM(credits_used), 0) FROM tenant_credit_accounts",
+            nativeQuery = true)
+    long totalCreditsUsedPlatformWide();
+
+    /** Count tenants at each tier — feeds the "subscription mix" widget. */
+    @Query(value = "SELECT tier AS tier, COUNT(*) AS count FROM tenant_credit_accounts GROUP BY tier",
+            nativeQuery = true)
+    java.util.List<TierCount> countByTier();
+
+    interface TierCount {
+        String getTier();
+        long getCount();
+    }
