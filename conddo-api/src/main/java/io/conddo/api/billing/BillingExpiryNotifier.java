@@ -55,7 +55,7 @@ public class BillingExpiryNotifier {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void noti fy(TransitionResult t) {
+    public void notify(TransitionResult t) {
         if (!"grace".equals(t.toStatus()) && !"expired".equals(t.toStatus())) {
             // Cancelled-completion is silent (merchant initiated it).
             return;
