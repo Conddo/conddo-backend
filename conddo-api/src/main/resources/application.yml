@@ -85,10 +85,15 @@ conddo:
     app-title: ${CONDDO_OPENROUTER_APP_TITLE:Conddo}
     # Per-action model overrides (see AiModelSelector). Any left blank falls
     # back to the global `model` above. Pick from any OpenRouter model slug.
-    model-classifier: ${CONDDO_OPENROUTER_MODEL_CLASSIFIER:}
+    #
+    # Classifier + brief default to DeepSeek V3.1 free — structured-JSON
+    # tool-selection at zero marginal cost. If OpenRouter's free tier is
+    # rate-limited on a hot day the caller sees a clean AI_SUGGESTION_FAILED
+    # and can retry; that's a better failure mode than silently billing.
+    model-classifier: ${CONDDO_OPENROUTER_MODEL_CLASSIFIER:deepseek/deepseek-chat-v3.1:free}
     model-website:    ${CONDDO_OPENROUTER_MODEL_WEBSITE:}
     model-marketing:  ${CONDDO_OPENROUTER_MODEL_MARKETING:}
-    model-brief:      ${CONDDO_OPENROUTER_MODEL_BRIEF:}
+    model-brief:      ${CONDDO_OPENROUTER_MODEL_BRIEF:deepseek/deepseek-chat-v3.1:free}
   anthropic:
     base-url: ${CONDDO_ANTHROPIC_BASE_URL:https://api.anthropic.com}
     api-key: ${CONDDO_ANTHROPIC_API_KEY:}

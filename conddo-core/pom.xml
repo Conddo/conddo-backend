@@ -32,6 +32,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- AOP: powers @TenantScoped / @CrossTenantScoped so services don't have
+             to remember tenantSession.bind() manually. Forgetting the bind is a
+             correctness bomb (RLS query runs unscoped) — the aspect closes it. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
         <!-- Bean Validation on DTOs / entities -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

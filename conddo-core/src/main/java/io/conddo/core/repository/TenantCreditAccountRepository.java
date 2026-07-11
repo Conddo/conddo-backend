@@ -97,11 +97,11 @@ public interface TenantCreditAccountRepository extends JpaRepository<TenantCredi
                   @Param("now") OffsetDateTime now,
                   @Param("nextEnd") OffsetDateTime nextEnd);
 
-    // ----- Platform overview (Studio dashboard) -----------------------------
+    // ----- Platform overview (admin dashboard on studio.getconddo.com) -----
 
-    /** Total credits consumed across the platform in the current cycles.
-     *  Sum of every tenant's credits_used, ignoring tier — because Studio
-     *  wants the raw burn number to compare against OpenRouter's bill. */
+    /** Sum of every tenant's credits_used in the current cycles. Feeds the
+     *  "platform credit burn" tile so ops can compare against the OpenRouter
+     *  bill. COALESCE handles the empty-table case (SUM returns NULL). */
     @Query(value = "SELECT COALESCE(SUM(credits_used), 0) FROM tenant_credit_accounts",
             nativeQuery = true)
     long totalCreditsUsedPlatformWide();
@@ -115,3 +115,5 @@ public interface TenantCreditAccountRepository extends JpaRepository<TenantCredi
         String getTier();
         long getCount();
     }
+}
+

@@ -9,9 +9,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Studio dashboard snapshot — cross-tenant read of the current platform
- * state. SUPER_ADMIN only. Feeds the single-page Studio dashboard at
- * {@code studio.getconddo.com}.
+ * Admin dashboard endpoints for {@code studio.getconddo.com}. SUPER_ADMIN-only.
+ * Serves the platform snapshot the FE renders as the metrics row + breakdown
+ * widgets on the /admin dashboard.
  */
 @RestController
 @RequestMapping("/api/v1/admin/platform")

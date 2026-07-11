@@ -1,5 +1,6 @@
 package io.conddo.api.config;
 
+import io.conddo.core.auth.InternalRole;
 import io.conddo.core.auth.PasswordHasher;
 import io.conddo.core.domain.StaffUser;
 import io.conddo.core.repository.StaffUserRepository;
@@ -13,9 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Plants — and keeps — a SUPER_ADMIN account in {@code staff_users} so the
- * platform owner has a way into the cross-tenant admin surfaces on this API
- * (used by Studio's Platform Tenants / Users / Sites / Beta-Access pages,
- * which proxy / call this service).
+ * platform owner has a way into the admin dashboard on studio.getconddo.com
+ * and the cross-tenant admin surfaces on this API.
  *
  * <p>Runs whenever {@code CONDDO_BOOTSTRAP_SUPERADMIN_EMAIL} and
  * {@code CONDDO_BOOTSTRAP_SUPERADMIN_PASSWORD} are both set:
@@ -26,17 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
  *       Idempotent — safe on every boot.</li>
  * </ul>
  *
- * <p>The env-var pair acts as a permanent recovery path: the platform owner
- * keeps the credentials in their password manager and is guaranteed access
- * after every redeploy. Clearing the env vars turns the runner into a no-op
- * without touching the existing row. Same trust boundary as the Studio
- * bootstrap — anyone with Render dashboard access can reset the password by
- * editing the env var, which is correct because they already have root over
- * the deploy.
- *
- * <p>Tip: use the SAME email + password as Studio's bootstrap so the platform
- * owner has one credential pair for both surfaces — one for the Studio
- * admin console, one for cross-tenant API calls via this service.
+ * <p>The env-var pair acts as a permanent recovery path: clearing them turns
+ * this runner into a no-op without touching an existing row. Same trust
+ * boundary as any deploy secret — Render dashboard access = root.
  */
 @Component
 public class PlatformSuperAdminBootstrap implements ApplicationRunner {
@@ -66,27 +58,28 @@ public class PlatformSuperAdminBootstrap implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         if (email.isBlank() || password.isBlank()) {
-            log.debug("Platform superadmin bootstrap skipped — CONDDO_BOOTSTRAP_SUPERADMIN_EMAIL/PASSWORD not set.");
+            log.debug("Platform superadmin bootstrap skipped — env vars not set.");
             return;
         }
         if (password.length() < 8) {
-            log.warn("Platform superadmin bootstrap skipped — CONDDO_BOOTSTRAP_SUPERADMIN_PASSWORD must be at least 8 characters.");
+            log.warn("Platform superadmin bootstrap skipped — password must be ≥ 8 chars.");
             return;
         }
         String trimmedEmail = email.trim().toLowerCase();
         String trimmedName = fullName.trim();
         String hash = passwordHasher.hash(password);
+        String role = InternalRole.SUPER_ADMIN.name();
 
         staffUserRepository.findByEmail(trimmedEmail).ifPresentOrElse(
                 existing -> {
                     existing.resetPasswordHash(hash);
-                    existing.changeInternalRole("SUPER_ADMIN");
+                    existing.changeInternalRole(role);
                     existing.setActive(true);
                     staffUserRepository.save(existing);
                     log.info("Platform superadmin bootstrap reset SUPER_ADMIN <{}>.", trimmedEmail);
                 },
                 () -> {
-                    staffUserRepository.save(new StaffUser(trimmedEmail, hash, trimmedName, "SUPER_ADMIN"));
+                    staffUserRepository.save(new StaffUser(trimmedEmail, hash, trimmedName, role));
                     log.info("Platform superadmin bootstrap created SUPER_ADMIN <{}>.", trimmedEmail);
                 });
     }

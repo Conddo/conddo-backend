@@ -18,7 +18,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
     /** Resolves a tenant from its self-book link slug (§11.5 public endpoint). */
     Optional<Tenant> findByBookingLinkSlug(String bookingLinkSlug);
 
-    // ----- Platform overview (Studio dashboard) -----------------------------
+    // ----- Platform overview (admin dashboard on studio.getconddo.com) -----
 
     /** Total tenants across all statuses. */
     @Query("select count(t) from Tenant t")

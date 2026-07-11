@@ -19,7 +19,6 @@ import io.conddo.core.tenant.TenantSession;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,7 +57,7 @@ public class PublicOrderCheckoutService {
     private final PharmacyDiscountService discountService;
     private final PharmacyRefillOfferService refillOfferService;
     private final PharmacyLoyaltyService loyaltyService;
-    private final ApplicationEventPublisher events;
+    private final io.conddo.core.events.DomainEventBus bus;
     private final TenantSession tenantSession;
 
     @PersistenceContext
@@ -77,7 +76,7 @@ public class PublicOrderCheckoutService {
                                       PharmacyDiscountService discountService,
                                       PharmacyRefillOfferService refillOfferService,
                                       PharmacyLoyaltyService loyaltyService,
-                                      ApplicationEventPublisher events,
+                                      io.conddo.core.events.DomainEventBus bus,
                                       TenantSession tenantSession) {
         this.productRepository = productRepository;
         this.customerRepository = customerRepository;
@@ -92,7 +91,7 @@ public class PublicOrderCheckoutService {
         this.discountService = discountService;
         this.refillOfferService = refillOfferService;
         this.loyaltyService = loyaltyService;
-        this.events = events;
+        this.bus = bus;
         this.tenantSession = tenantSession;
     }
 
@@ -284,7 +283,7 @@ public class PublicOrderCheckoutService {
             }
         }
 
-        events.publishEvent(new OrderCreatedEvent(
+        bus.publish(new OrderCreatedEvent(
                 TenantContext.require(), order.getId(), order.getReference(),
                 customer.getFullName(), total,
                 OrderCreatedEvent.Source.PUBLIC_WEBSITE));

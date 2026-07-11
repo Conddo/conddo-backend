@@ -14,9 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Per-tenant module opt-in surface (Vertical Inference Phase B).
@@ -42,20 +40,31 @@ public class TenantModulesController {
     }
 
     @GetMapping
-    public ApiResponse<List<Map<String, Object>>> list() {
+    public ApiResponse<List<ModuleRow>> list() {
         Tenant tenant = currentTenant();
         return ApiResponse.ok(resolver.listAll(tenant.getVerticalId(), tenant.getPlanId()).stream()
                 .map(TenantModulesController::toRow).toList());
     }
 
+    /** Live effective module ids for the calling tenant — vertical/plan preset
+     *  ∪ opt-ins − opt-outs. Widened past owner-only because every authenticated
+     *  session needs it to build the sidebar (staff shouldn't see a tool their
+     *  owner disabled). Overrides the class-level {@code ownerOnly()} gate. */
+    @GetMapping("/active")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<List<String>> active() {
+        Tenant tenant = currentTenant();
+        return ApiResponse.ok(resolver.resolve(tenant.getVerticalId(), tenant.getPlanId()));
+    }
+
     @PostMapping("/{moduleId}/enable")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> enable(@PathVariable String moduleId) {
+    public ResponseEntity<ApiResponse<ModuleRow>> enable(@PathVariable String moduleId) {
         resolver.setEnabled(moduleId, true);
         return ResponseEntity.ok(ApiResponse.ok(stateRow(moduleId)));
     }
 
     @PostMapping("/{moduleId}/disable")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> disable(@PathVariable String moduleId) {
+    public ResponseEntity<ApiResponse<ModuleRow>> disable(@PathVariable String moduleId) {
         resolver.setEnabled(moduleId, false);
         return ResponseEntity.ok(ApiResponse.ok(stateRow(moduleId)));
     }
@@ -67,26 +76,25 @@ public class TenantModulesController {
                 .orElseThrow(() -> new io.conddo.core.common.NotFoundException("Tenant not found"));
     }
 
-    private Map<String, Object> stateRow(String moduleId) {
+    private ModuleRow stateRow(String moduleId) {
         Tenant tenant = currentTenant();
         return resolver.listAll(tenant.getVerticalId(), tenant.getPlanId()).stream()
                 .filter(s -> s.id().equals(moduleId))
                 .findFirst()
                 .map(TenantModulesController::toRow)
-                .orElseGet(() -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("id", moduleId);
-                    row.put("enabled", true);
-                    return row;
-                });
+                .orElseGet(() -> new ModuleRow(moduleId, true, false, "tenant_choice"));
     }
 
-    private static Map<String, Object> toRow(ModuleState state) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", state.id());
-        row.put("enabled", state.enabled());
-        row.put("inVerticalDefault", state.inVerticalDefault());
-        row.put("source", state.source());
-        return row;
+    private static ModuleRow toRow(ModuleState state) {
+        return new ModuleRow(state.id(), state.enabled(),
+                state.inVerticalDefault(), state.source());
     }
+
+    /**
+     * API contract for a single module row. Typed record instead of the
+     * previous {@code Map<String,Object>} — Jackson serialises the fields in
+     * declaration order, the FE gets a strong type, and OpenAPI generators
+     * can now emit a schema.
+     */
+    public record ModuleRow(String id, boolean enabled, boolean inVerticalDefault, String source) {}
 }

@@ -22,7 +22,7 @@ public record OrderCreatedEvent(
         String orderReference,
         String customerName,
         BigDecimal totalNgn,
-        Source source) {
+        Source source) implements DomainEvent {
 
     public enum Source {
         /** Manually-typed order from the merchant dashboard. */
