@@ -50,20 +50,30 @@ public class VerticalToolMatrix {
     }
 
     /**
-     * Normalise a stored plan to a known tier; unknown/blank/"free" → starter.
-     * Handles both legacy tier names ({@code starter/business/pro}) and the new
-     * product names introduced by BILLING_TIERS_SPEC ({@code launcher/growth/scaler}).
-     * The matrix keys stay on the tier axis — translating here keeps the seven
-     * vertical entries above from needing per-rebrand edits.
+     * Normalise a stored plan to a known tier. The matrix keys are the
+     * INTERNAL tier axis ({@code starter/business/pro}) — pricing tiers
+     * ({@code free/student/starter/growth/pro} per V67) translate down onto
+     * it here:
+     * <ul>
+     *   <li>{@code free / student / starter} → {@code starter}
+     *       (free + student mirror starter functionally; credit budgets differ)</li>
+     *   <li>{@code growth} → {@code business}</li>
+     *   <li>{@code pro} → {@code pro}</li>
+     * </ul>
+     * Legacy names ({@code launcher / scaler}) are still accepted as an alias
+     * so a JWT minted before V67 keeps working until it expires. Unknown
+     * inputs fall back to {@code starter}.
      */
     public String normalizePlan(String plan) {
         String p = plan == null ? "" : plan.trim().toLowerCase();
-        // New product names → matrix tier names. Tier names pass through.
         String mapped = switch (p) {
-            case "launcher" -> "starter";
-            case "growth"   -> "business";
-            case "scaler"   -> "pro";
-            default         -> p;
+            case "free", "student", "starter" -> "starter";
+            case "growth"                     -> "business";
+            case "pro"                        -> "pro";
+            // Legacy aliases from pre-V67 JWTs:
+            case "launcher"                   -> "starter";
+            case "scaler"                     -> "pro";
+            default                           -> p;
         };
         return PLAN_ORDER.contains(mapped) ? mapped : "starter";
     }

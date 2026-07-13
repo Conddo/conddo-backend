@@ -35,18 +35,25 @@ import java.util.UUID;
 public class BillingService {
 
     private static final Logger log = LoggerFactory.getLogger(BillingService.class);
-    private static final String DEFAULT_PLAN = "launcher";
+    /** Trial plan — a new tenant gets Starter features during the 14-day
+     *  trial so the first-run product experience isn't crippled. On trial
+     *  end without payment the caller downgrades to {@code free}. */
+    private static final String DEFAULT_PLAN = "starter";
     private static final String FALLBACK_TIER = "starter";
 
     /** Spec §1: 14-day trial on new tenant signup. */
     private static final int TRIAL_DAYS = 14;
 
-    /** Map {@code launcher/growth/scaler} → the internal {@code starter/business/pro} tier
-     *  the existing {@link io.conddo.core.registry.VerticalToolMatrix} keys on. */
+    /** Map product name → internal tier ({@code starter/business/pro}) that
+     *  {@link io.conddo.core.registry.VerticalToolMatrix} keys on. Free +
+     *  Student are downstream mirrors of Starter — same tool set, different
+     *  credit quotas + price. */
     private static final Map<String, String> PLAN_TO_TIER = Map.of(
-            "launcher", "starter",
-            "growth",   "business",
-            "scaler",   "pro");
+            "free",    "starter",
+            "student", "starter",
+            "starter", "starter",
+            "growth",  "business",
+            "pro",     "pro");
 
     private final SubscriptionPlanRepository planRepository;
     private final TenantSubscriptionRepository subscriptionRepository;
@@ -140,7 +147,7 @@ public class BillingService {
 
         // Carry over remaining time so the upgrade isn't a downgrade in disguise.
         OffsetDateTime newExpiry = now.isAfter(current.getExpiresAt())
-                ? now.plus("quarterly".equals(billingCycle) ? 90 : 30, ChronoUnit.DAYS)
+                ? now.plus(cycleDays(billingCycle), ChronoUnit.DAYS)
                 : current.getExpiresAt();
         // Cancel the old row, then flush — the partial unique index
         // `idx_tenant_active_sub` allows at most one row per tenant in
@@ -278,6 +285,19 @@ public class BillingService {
 
     private static String normalisePlanName(String planName) {
         return planName == null ? DEFAULT_PLAN : planName.trim().toLowerCase();
+    }
+
+    /** Days in a billing cycle. Yearly ships at 365 rather than
+     *  calendar-year to keep the semantics identical to the monthly/
+     *  quarterly cases — subscribers get the same "N days from now"
+     *  regardless of leap years. */
+    static int cycleDays(String billingCycle) {
+        if (billingCycle == null) return 30;
+        return switch (billingCycle.trim().toLowerCase()) {
+            case "yearly", "annual", "annually" -> 365;
+            case "quarterly"                    -> 90;
+            default                             -> 30;
+        };
     }
 
     private static int parseLimit(String value) {

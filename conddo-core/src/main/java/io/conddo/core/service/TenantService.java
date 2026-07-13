@@ -66,7 +66,7 @@ public class TenantService {
         tenantSession.clearCrossTenant();
         Tenant tenant = tenantRepository.save(new Tenant(name, slug, verticalId, planId));
         persistAdmin(tenant, adminEmail, passwordHasher.hash(adminPassword), adminFullName, null, false);
-        creditService.provisionAccount(tenant.getId());
+        creditService.provisionAccount(tenant.getId(), planId);
         events.publish(new TenantActivatedEvent(tenant.getId()));
         return tenant;
     }
@@ -96,7 +96,7 @@ public class TenantService {
         }
         tenant = tenantRepository.save(tenant);
         User admin = persistAdmin(tenant, adminEmail, adminPasswordHash, adminFullName, adminPhone, true);
-        creditService.provisionAccount(tenant.getId());
+        creditService.provisionAccount(tenant.getId(), planId);
         events.publish(new TenantActivatedEvent(tenant.getId()));
         return new Provisioned(tenant, admin);
     }

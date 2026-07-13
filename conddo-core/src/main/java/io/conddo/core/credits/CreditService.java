@@ -239,19 +239,25 @@ public class CreditService {
 
     // ----- Provisioning -----------------------------------------------------
 
-    /** Called once at tenant create — issues the account with a Free-tier
-     *  allocation and charges the one-time AI provisioning fee (10 credits)
-     *  the classifier already consumed during the onboarding wizard. */
+    /** Called once at tenant create — issues the account with the plan's
+     *  monthly quota (Pricing v2, V67) and charges the one-time AI
+     *  provisioning fee the classifier already consumed during onboarding.
+     *  Prefer the overload that takes a {@code planName} so the tenant
+     *  gets its correct budget; the no-arg form is a fallback used only
+     *  by tests / legacy call sites and provisions on the Free tier. */
     @Transactional
     public TenantCreditAccount provisionAccount(UUID tenantId) {
-        OffsetDateTime now = OffsetDateTime.now(clock);
-        TenantCreditAccount account = accounts.save(
-                new TenantCreditAccount(tenantId, now, now.plus(CYCLE_LENGTH)));
+        return provisionAccount(tenantId, TenantCreditAccount.TIER_FREE);
+    }
 
-        // Book-keep the AI provisioning run against the fresh account. Direct
-        // atomic decrement rather than going through consume() because we own
-        // the transaction + we know the account was just created with the
-        // right headroom (defensive: consume() would fail-loud if not).
+    @Transactional
+    public TenantCreditAccount provisionAccount(UUID tenantId, String planName) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        TierBudget budget = tierBudgetFor(planName);
+        TenantCreditAccount account = accounts.save(
+                new TenantCreditAccount(tenantId, now, now.plus(CYCLE_LENGTH),
+                        budget.tier(), budget.monthlyQuota()));
+
         int cost = CreditActions.costOf(CreditActions.AI_PROVISIONING);
         int affected = accounts.consumeIfAvailable(tenantId, cost, now);
         if (affected == 1) {
@@ -262,6 +268,35 @@ public class CreditService {
         }
         return account;
     }
+
+    /** Pricing v2 quotas — keep this synchronised with V67's
+     *  {@code plan_features.credits_month} rows. Kept in Java rather than
+     *  read from the DB per-provision because provisioning is on the hot
+     *  signup path; a mismatch is caught by the integration test that
+     *  spins up Flyway. */
+    private static TierBudget tierBudgetFor(String planName) {
+        String p = planName == null ? "" : planName.trim().toLowerCase();
+        return switch (p) {
+            case "student" -> new TierBudget(TenantCreditAccount.TIER_STUDENT,
+                                             TenantCreditAccount.STUDENT_MONTHLY_QUOTA);
+            case "starter" -> new TierBudget(TenantCreditAccount.TIER_STARTER,
+                                             TenantCreditAccount.STARTER_MONTHLY_QUOTA);
+            case "growth"  -> new TierBudget(TenantCreditAccount.TIER_GROWTH,
+                                             TenantCreditAccount.GROWTH_MONTHLY_QUOTA);
+            case "pro"     -> new TierBudget(TenantCreditAccount.TIER_PRO,
+                                             TenantCreditAccount.PRO_MONTHLY_QUOTA);
+            // Legacy pre-V67 aliases still resolve so a rollback of V67 wouldn't
+            // orphan an in-flight signup:
+            case "launcher" -> new TierBudget(TenantCreditAccount.TIER_STARTER,
+                                              TenantCreditAccount.STARTER_MONTHLY_QUOTA);
+            case "scaler"   -> new TierBudget(TenantCreditAccount.TIER_PRO,
+                                              TenantCreditAccount.PRO_MONTHLY_QUOTA);
+            default        -> new TierBudget(TenantCreditAccount.TIER_FREE,
+                                             TenantCreditAccount.FREE_MONTHLY_QUOTA);
+        };
+    }
+
+    private record TierBudget(String tier, int monthlyQuota) {}
 
     // ----- internals --------------------------------------------------------
 

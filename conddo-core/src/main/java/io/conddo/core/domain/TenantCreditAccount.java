@@ -32,13 +32,21 @@ import java.util.UUID;
 @Table(name = "tenant_credit_accounts")
 public class TenantCreditAccount {
 
+    /** Pricing v2 (V67). Ordered lowest → highest. */
     public static final String TIER_FREE = "free";
+    public static final String TIER_STUDENT = "student";
     public static final String TIER_STARTER = "starter";
     public static final String TIER_GROWTH = "growth";
+    public static final String TIER_PRO = "pro";
 
-    public static final int FREE_MONTHLY_QUOTA = 100;
-    public static final int STARTER_MONTHLY_QUOTA = 1_000;
-    public static final int GROWTH_MONTHLY_QUOTA = 10_000;
+    /** Default monthly quotas per tier — mirror of {@code plan_features.credits_month}
+     *  from V67. Held here too so a freshly-provisioned account has a
+     *  sensible fallback when the caller doesn't specify a plan (e.g. tests). */
+    public static final int FREE_MONTHLY_QUOTA    = 100;
+    public static final int STUDENT_MONTHLY_QUOTA = 300;
+    public static final int STARTER_MONTHLY_QUOTA = 500;
+    public static final int GROWTH_MONTHLY_QUOTA  = 3_000;
+    public static final int PRO_MONTHLY_QUOTA     = 10_000;
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -83,11 +91,21 @@ public class TenantCreditAccount {
     protected TenantCreditAccount() {
     }
 
-    /** Provision a fresh Free-tier account for a newly-created tenant. */
+    /** Provision a fresh Free-tier account for a newly-created tenant.
+     *  Retained for existing callers + tests; prefer the tier-aware
+     *  overload so new tenants receive the correct budget. */
     public TenantCreditAccount(UUID tenantId, OffsetDateTime now, OffsetDateTime cycleEnd) {
+        this(tenantId, now, cycleEnd, TIER_FREE, FREE_MONTHLY_QUOTA);
+    }
+
+    /** Provision a fresh account on {@code tier} with {@code monthlyQuota}
+     *  credits/cycle. Both must match a valid tier from V67 —
+     *  {@code CreditService.provisionAccount(planName)} is the canonical caller. */
+    public TenantCreditAccount(UUID tenantId, OffsetDateTime now, OffsetDateTime cycleEnd,
+                                String tier, int monthlyQuota) {
         this.tenantId = tenantId;
-        this.tier = TIER_FREE;
-        this.monthlyQuota = FREE_MONTHLY_QUOTA;
+        this.tier = tier;
+        this.monthlyQuota = monthlyQuota;
         this.billingCycleStart = now;
         this.billingCycleEnd = cycleEnd;
     }

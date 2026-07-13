@@ -12,14 +12,14 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * One plan in the catalog (BILLING_TIERS_SPEC §1). Three rows seeded by
- * V24: launcher, growth, scaler. Prices in <b>Kobo</b> on the wire to
- * the DB; the wire shape to the FE is in <b>Naira</b> — converted in the
- * response builder.
+ * One plan in the catalog (Pricing v2, V67). Five rows: {@code free},
+ * {@code student}, {@code starter}, {@code growth}, {@code pro}. Prices in
+ * <b>Kobo</b> on the wire to the DB; the wire shape to the FE is in
+ * <b>Naira</b> — converted in the response builder.
  *
- * <p>Scaler rows have {@code monthlyPrice} set but {@code quarterlyPrice}
- * null + {@code isCustom = true} — the FE shows "Contact sales" instead
- * of a quarterly price chip.
+ * <p>Every tier now has a real yearly price (30% off vs 12× monthly); the
+ * legacy {@code custom} escape hatch is unused after V67 (custom-priced
+ * enterprise sits above the catalogue anyway).
  */
 @Entity
 @Table(name = "subscription_plans")
@@ -29,7 +29,8 @@ public class SubscriptionPlan {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    /** Canonical plan name — {@code launcher} / {@code growth} / {@code scaler}. */
+    /** Canonical plan name — {@code free} / {@code student} / {@code starter}
+     *  / {@code growth} / {@code pro}. */
     @Column(nullable = false, unique = true)
     private String name;
 
@@ -41,6 +42,12 @@ public class SubscriptionPlan {
 
     @Column(name = "quarterly_price")
     private Integer quarterlyPrice;
+
+    /** Kobo. Nullable for parity with the other two, but set for every
+     *  tier from V67 onward — a null here indicates "yearly cycle not
+     *  offered on this plan" rather than "come back later". */
+    @Column(name = "yearly_price")
+    private Integer yearlyPrice;
 
     @Column(name = "is_custom", nullable = false)
     private boolean custom = false;
@@ -73,6 +80,10 @@ public class SubscriptionPlan {
 
     public Integer getQuarterlyPrice() {
         return quarterlyPrice;
+    }
+
+    public Integer getYearlyPrice() {
+        return yearlyPrice;
     }
 
     public boolean isCustom() {

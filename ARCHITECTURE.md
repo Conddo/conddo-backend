@@ -109,6 +109,30 @@ Present in tree:
 
 Missing Redis silently no-ops the relay so single-pod deployments (tests, local dev) still work.
 
+## Pricing (V67, Pricing v2)
+
+Five customer-facing plans. Prices in Naira (kobo in the DB).
+
+| Plan | Monthly | Quarterly (15% off) | Yearly (30% off) | Credits/mo |
+|---|---|---|---|---|
+| Free    | ₦0      | ₦0       | ₦0       | 100 |
+| Student | ₦3,000  | ₦7,650   | ₦25,200  | 300 |
+| Starter | ₦5,000  | ₦12,750  | ₦42,000  | 500 |
+| Growth  | ₦15,000 | ₦38,250  | ₦126,000 | 3,000 |
+| Pro     | ₦30,000 | ₦76,500  | ₦252,000 | 10,000 |
+
+**Internal tier mapping** — `VerticalToolMatrix` still keys on the three tier names `starter / business / pro`. Product-tier resolution:
+
+- `free`, `student`, `starter` → `starter` (same tool set; different credit budgets + price)
+- `growth` → `business`
+- `pro` → `pro`
+
+Legacy pre-V67 names (`launcher`, `scaler`) are still accepted so JWTs minted before the migration keep working until they expire.
+
+**Billing cycles** — `monthly / quarterly / yearly`. `BillingService.cycleDays()` is the single source of truth (30 / 90 / 365).
+
+**Trial** — `TenantService.create()` and `provisionFromRegistration()` provision on `starter` for 14 days. On trial end without payment the tenant should downgrade to `free` (not yet automated).
+
 ## Payment providers
 
 Two, deliberately split by surface — never mix in one flow:
