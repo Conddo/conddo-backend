@@ -14,5 +14,5 @@ public record DiscountPendingApprovalEvent(UUID tenantId,
                                             String discountLabel,
                                             String discountType,
                                             String discountValue,
-                                            UUID createdBy) {
+                                            UUID createdBy) implements DomainEvent {
 }

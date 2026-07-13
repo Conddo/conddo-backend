@@ -67,16 +67,30 @@ public class TenantScopedAspect {
 
         if (scoped.crossTenant()) {
             tenantSession.bindCrossTenant();
+            // Explicit try/catch instead of plain try/finally — Java's finally
+            // silently REPLACES the target's exception if the finally block
+            // also throws, which would hide a genuine bug behind a "clear
+            // failed" message. We preserve the target exception and attach
+            // the clear failure as suppressed. The GUC is transaction-local
+            // (SET set_config('app.cross_tenant','','true')) so it auto-resets
+            // at commit, but we clear eagerly for defence in depth.
+            Throwable primary = null;
             try {
                 return pjp.proceed();
+            } catch (Throwable t) {
+                primary = t;
+                throw t;
             } finally {
-                // The GUC is transaction-local (SET set_config('app.cross_tenant','','true'))
-                // so it would auto-reset at commit anyway, but we clear
-                // eagerly for defence-in-depth: a caller that starts a
-                // tenant-scoped read AFTER the cross-tenant call within the
-                // same tx (rare, but possible via a controller-side facade)
-                // must not see cross_tenant=true carrying over.
-                tenantSession.clearCrossTenant();
+                try {
+                    tenantSession.clearCrossTenant();
+                } catch (RuntimeException clearFail) {
+                    if (primary != null) {
+                        primary.addSuppressed(clearFail);
+                    } else {
+                        // Target succeeded; the clear failure IS the error.
+                        throw clearFail;
+                    }
+                }
             }
         }
 

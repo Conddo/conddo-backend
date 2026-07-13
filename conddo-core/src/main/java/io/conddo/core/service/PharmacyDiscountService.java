@@ -9,7 +9,7 @@ import io.conddo.core.repository.ProductRepository;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantSession;
 import jakarta.persistence.criteria.Predicate;
-import org.springframework.context.ApplicationEventPublisher;
+import io.conddo.core.events.DomainEventBus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -37,13 +37,13 @@ public class PharmacyDiscountService {
 
     private final PharmacyDiscountRepository repository;
     private final ProductRepository productRepository;
-    private final ApplicationEventPublisher events;
+    private final DomainEventBus events;
     private final TenantSession tenantSession;
     private final Clock clock;
 
     public PharmacyDiscountService(PharmacyDiscountRepository repository,
                                    ProductRepository productRepository,
-                                   ApplicationEventPublisher events,
+                                   DomainEventBus events,
                                    TenantSession tenantSession,
                                    Clock clock) {
         this.repository = repository;
@@ -82,7 +82,7 @@ public class PharmacyDiscountService {
                 productId, discountType, discountValue, label, startsAt, endsAt, createdBy));
         // §12B — fan out a bell-feed nudge to the TENANT_ADMIN so they
         // can approve/reject without polling. Listener runs AFTER_COMMIT.
-        events.publishEvent(new DiscountPendingApprovalEvent(
+        events.publish(new DiscountPendingApprovalEvent(
                 TenantContext.require(), saved.getId(), productId, label,
                 discountType, discountValue.toPlainString(), createdBy));
         return saved;

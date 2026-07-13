@@ -55,7 +55,7 @@ public class OrderService {
     private final UserRepository userRepository;
     private final SmsSender smsSender;
     private final TenantSession tenantSession;
-    private final org.springframework.context.ApplicationEventPublisher events;
+    private final io.conddo.core.events.DomainEventBus events;
     private final Clock clock;
 
     public OrderService(OrderRepository orderRepository, OrderItemRepository itemRepository,
@@ -63,7 +63,7 @@ public class OrderService {
                         OrderStageService stageService, CustomerRepository customerRepository,
                         UserRepository userRepository, SmsSender smsSender,
                         TenantSession tenantSession,
-                        org.springframework.context.ApplicationEventPublisher events,
+                        io.conddo.core.events.DomainEventBus events,
                         Clock clock) {
         this.orderRepository = orderRepository;
         this.itemRepository = itemRepository;
@@ -212,7 +212,7 @@ public class OrderService {
         // Publishers (loyalty cashback credit, etc.) opt in to specific
         // transitions on their listener. Event runs AFTER_COMMIT so a
         // rolled-back transition never credits.
-        events.publishEvent(new io.conddo.core.events.OrderStageChangedEvent(
+        events.publish(new io.conddo.core.events.OrderStageChangedEvent(
                 io.conddo.core.tenant.TenantContext.require(), order.getId(),
                 order.getCustomerId(), from, toStage, order.getAmount()));
         return order;

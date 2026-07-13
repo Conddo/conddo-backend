@@ -17,7 +17,7 @@ public record BookingCreatedEvent(
         String service,
         OffsetDateTime startsAt,
         String contactPhone,
-        Source source) {
+        Source source) implements DomainEvent {
 
     public enum Source {
         /** Dashboard-typed booking. */

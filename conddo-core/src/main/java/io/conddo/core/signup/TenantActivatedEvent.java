@@ -1,5 +1,7 @@
 package io.conddo.core.signup;
 
+import io.conddo.core.events.DomainEvent;
+
 import java.util.UUID;
 
 /**
@@ -10,5 +12,5 @@ import java.util.UUID;
  * <p>Only the {@code tenantId} is carried — listeners load the {@link
  * io.conddo.core.domain.Tenant} themselves so they always see the committed state.
  */
-public record TenantActivatedEvent(UUID tenantId) {
+public record TenantActivatedEvent(UUID tenantId) implements DomainEvent {
 }

@@ -8,7 +8,7 @@ import io.conddo.core.repository.BookingRepository;
 import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantSession;
-import org.springframework.context.ApplicationEventPublisher;
+import io.conddo.core.events.DomainEventBus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,12 +32,12 @@ public class PublicBookingService {
 
     private final TenantRepository tenantRepository;
     private final BookingRepository bookingRepository;
-    private final ApplicationEventPublisher events;
+    private final DomainEventBus events;
     private final TenantSession tenantSession;
     private final Clock clock;
 
     public PublicBookingService(TenantRepository tenantRepository, BookingRepository bookingRepository,
-                                ApplicationEventPublisher events,
+                                DomainEventBus events,
                                 TenantSession tenantSession, Clock clock) {
         this.tenantRepository = tenantRepository;
         this.bookingRepository = bookingRepository;
@@ -76,7 +76,7 @@ public class PublicBookingService {
 
         // Fan-out to bell-feed + email + SMS via the BookingNotificationListener
         // (Pharmacy v2 follow-up — booking parity with the order notify flow).
-        events.publishEvent(new BookingCreatedEvent(
+        events.publish(new BookingCreatedEvent(
                 tenant.getId(), booking.getId(), customerName, service, start, phone,
                 BookingCreatedEvent.Source.PUBLIC_WEBSITE));
         return booking;

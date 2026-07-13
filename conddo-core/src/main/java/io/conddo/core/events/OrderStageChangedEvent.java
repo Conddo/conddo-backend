@@ -14,5 +14,5 @@ public record OrderStageChangedEvent(UUID tenantId,
                                      UUID customerId,
                                      String fromStage,
                                      String toStage,
-                                     BigDecimal totalNgn) {
+                                     BigDecimal totalNgn) implements DomainEvent {
 }
