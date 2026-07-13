@@ -194,6 +194,14 @@ public class RegistrationService {
         if (authProperties.requireOtpVerify() && !registration.isPhoneVerified()) {
             throw new PhoneNotVerifiedException();
         }
+        // Student tier is discounted; require an academic email suffix at
+        // signup so the price gate isn't wide open. Applied here (before
+        // tenant creation) so a failed check leaves NO half-provisioned
+        // state — the pending registration stays until they retry with a
+        // different plan or an academic email.
+        if (io.conddo.core.billing.StudentEligibility.isStudentPlan(planId)) {
+            io.conddo.core.billing.StudentEligibility.assertEligible(registration.getEmail());
+        }
         TenantService.Provisioned provisioned = tenantService.provisionFromRegistration(
                 businessName, businessType, planId, registration.getEmail(),
                 registration.getPasswordHash(), registration.getFullName(), registration.getPhone(),

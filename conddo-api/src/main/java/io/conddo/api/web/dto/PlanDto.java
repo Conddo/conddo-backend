@@ -12,10 +12,11 @@ import java.util.Map;
  * or {@code "unlimited"}).
  */
 public record PlanDto(
-        String id,                       // canonical name — launcher / growth / scaler
+        String id,                       // canonical name — free / student / starter / growth / pro
         String displayName,
         Integer monthlyPrice,            // Naira
-        Integer quarterlyPrice,          // Naira; null on Scaler
+        Integer quarterlyPrice,          // Naira
+        Integer yearlyPrice,             // Naira (V67 — same for every product tier)
         boolean isCustom,
         Map<String, String> features) {
 
@@ -25,6 +26,7 @@ public record PlanDto(
                 p.plan().getDisplayName(),
                 koboToNaira(p.plan().getMonthlyPrice()),
                 koboToNaira(p.plan().getQuarterlyPrice()),
+                koboToNaira(p.plan().getYearlyPrice()),
                 p.plan().isCustom(),
                 p.features());
     }

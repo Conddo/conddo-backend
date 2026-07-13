@@ -47,28 +47,38 @@ public class BillingService {
     /** Map product name → internal tier ({@code starter/business/pro}) that
      *  {@link io.conddo.core.registry.VerticalToolMatrix} keys on. Free +
      *  Student are downstream mirrors of Starter — same tool set, different
-     *  credit quotas + price. */
-    private static final Map<String, String> PLAN_TO_TIER = Map.of(
-            "free",    "starter",
-            "student", "starter",
-            "starter", "starter",
-            "growth",  "business",
-            "pro",     "pro");
+     *  credit quotas + price. Legacy pre-V67 names (launcher, scaler) are
+     *  kept so JWTs minted before the migration keep working until they
+     *  expire. */
+    private static final Map<String, String> PLAN_TO_TIER = Map.ofEntries(
+            Map.entry("free",     "starter"),
+            Map.entry("student",  "starter"),
+            Map.entry("starter",  "starter"),
+            Map.entry("growth",   "business"),
+            Map.entry("pro",      "pro"),
+            Map.entry("launcher", "starter"),
+            Map.entry("scaler",   "pro"));
 
     private final SubscriptionPlanRepository planRepository;
     private final TenantSubscriptionRepository subscriptionRepository;
     private final PlanFeatureRepository featureRepository;
+    private final io.conddo.core.repository.TenantRepository tenantRepository;
+    private final io.conddo.core.repository.TenantCreditAccountRepository creditAccountRepository;
     private final Clock clock;
     private final int gracePeriodDays;
 
     public BillingService(SubscriptionPlanRepository planRepository,
                           TenantSubscriptionRepository subscriptionRepository,
                           PlanFeatureRepository featureRepository,
+                          io.conddo.core.repository.TenantRepository tenantRepository,
+                          io.conddo.core.repository.TenantCreditAccountRepository creditAccountRepository,
                           Clock clock,
                           @Value("${conddo.billing.grace-period-days:3}") int gracePeriodDays) {
         this.planRepository = planRepository;
         this.subscriptionRepository = subscriptionRepository;
         this.featureRepository = featureRepository;
+        this.tenantRepository = tenantRepository;
+        this.creditAccountRepository = creditAccountRepository;
         this.clock = clock;
         this.gracePeriodDays = gracePeriodDays;
     }
@@ -229,17 +239,55 @@ public class BillingService {
         for (TenantSubscription sub : subscriptionRepository.findExpirable(now)) {
             String fromStatus = sub.getStatus();
             TenantSubscription updated = applyExpiryTransitions(sub);
-            if (!fromStatus.equals(updated.getStatus())) {
-                changed.add(new TransitionResult(
-                        updated.getTenantId(),
-                        updated.getId(),
-                        fromStatus,
-                        updated.getStatus(),
-                        updated.getPlanId(),
-                        updated.getExpiresAt()));
+            if (fromStatus.equals(updated.getStatus())) {
+                continue;
             }
+            // Anyone who transitioned OUT of a paid state and landed on
+            // 'expired' or 'cancelled' with no active follow-on drops to
+            // Free automatically. Deliberate: an expired paid sub must
+            // NOT leave the tenant "planless" — that would crater their
+            // JWT-mint path and lose them access to the app entirely.
+            if (("expired".equals(updated.getStatus())
+                    || "cancelled".equals(updated.getStatus()))
+                    && subscriptionRepository.findActiveByTenantId(updated.getTenantId()).isEmpty()) {
+                downgradeToFree(updated.getTenantId(), now);
+            }
+            changed.add(new TransitionResult(
+                    updated.getTenantId(),
+                    updated.getId(),
+                    fromStatus,
+                    updated.getStatus(),
+                    updated.getPlanId(),
+                    updated.getExpiresAt()));
         }
         return changed;
+    }
+
+    /** Move a tenant onto the Free plan: mint a Free {@code TenantSubscription},
+     *  update {@code tenants.plan_id} so the JWT-mint reads Free from the
+     *  cache, and downshift the credit account's tier + monthly quota so
+     *  the next cycle starts with Free's budget. Existing top-ups and
+     *  in-cycle consumption are preserved. */
+    private void downgradeToFree(UUID tenantId, OffsetDateTime now) {
+        SubscriptionPlan free = planRepository.findByName("free").orElse(null);
+        if (free == null) {
+            log.warn("Auto-downgrade skipped for tenant {} — 'free' plan missing from catalog", tenantId);
+            return;
+        }
+        subscriptionRepository.save(new TenantSubscription(
+                tenantId, free.getId(), "monthly", "active", now,
+                now.plus(30, ChronoUnit.DAYS), null));
+
+        tenantRepository.findById(tenantId).ifPresent(t -> {
+            t.changePlanTo("free");
+            tenantRepository.save(t);
+        });
+        creditAccountRepository.findByTenantId(tenantId).ifPresent(acc -> {
+            acc.changeTier(io.conddo.core.domain.TenantCreditAccount.TIER_FREE,
+                    io.conddo.core.domain.TenantCreditAccount.FREE_MONTHLY_QUOTA);
+            creditAccountRepository.save(acc);
+        });
+        log.info("Auto-downgraded tenant {} to Free after paid subscription lapsed", tenantId);
     }
 
     /**

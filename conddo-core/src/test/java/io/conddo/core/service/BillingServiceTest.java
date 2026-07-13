@@ -39,10 +39,14 @@ class BillingServiceTest {
     private final SubscriptionPlanRepository planRepository = mock(SubscriptionPlanRepository.class);
     private final TenantSubscriptionRepository subscriptionRepository = mock(TenantSubscriptionRepository.class);
     private final PlanFeatureRepository featureRepository = mock(PlanFeatureRepository.class);
+    private final io.conddo.core.repository.TenantRepository tenantRepository =
+            mock(io.conddo.core.repository.TenantRepository.class);
+    private final io.conddo.core.repository.TenantCreditAccountRepository creditAccountRepository =
+            mock(io.conddo.core.repository.TenantCreditAccountRepository.class);
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     private final BillingService service = new BillingService(planRepository, subscriptionRepository,
-            featureRepository, clock, 3);
+            featureRepository, tenantRepository, creditAccountRepository, clock, 3);
 
     @Test
     void tierForPlanTranslatesProductNamesToTierNames() {

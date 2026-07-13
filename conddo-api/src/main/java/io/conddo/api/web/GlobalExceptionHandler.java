@@ -83,6 +83,16 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("NOT_FOUND", ex.getMessage())));
     }
 
+    /** Student tier requires an academic email suffix. The FE renders a
+     *  specific inline hint on this code — don't collapse it into a
+     *  generic 400 or the user has to guess. */
+    @ExceptionHandler(io.conddo.core.billing.StudentEligibility.StudentVerificationRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleStudentGate(
+            io.conddo.core.billing.StudentEligibility.StudentVerificationRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("STUDENT_VERIFICATION_REQUIRED", ex.getMessage())));
+    }
+
     @ExceptionHandler(TenantContextMissingException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoTenant(TenantContextMissingException ex) {
         return ResponseEntity.badRequest()

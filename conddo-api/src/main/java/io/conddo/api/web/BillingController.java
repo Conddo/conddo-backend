@@ -65,8 +65,18 @@ public class BillingController {
 
     @PostMapping("/upgrade")
     @PreAuthorize(ADMIN_ONLY)
-    public ApiResponse<SubscriptionDto> upgrade(@Valid @RequestBody UpgradeRequest request) {
+    public ApiResponse<SubscriptionDto> upgrade(@Valid @RequestBody UpgradeRequest request,
+                                                @AuthenticationPrincipal Jwt jwt) {
         UUID tenantId = TenantContext.require();
+        // Gate the Student tier at the upgrade path too — otherwise a tenant
+        // could sign up on Starter with a personal email and then switch down
+        // to Student. Read the caller's email from the JWT; falling back to
+        // the token's subject is the equivalent identity handle in the
+        // TENANT_ADMIN flow.
+        if (io.conddo.core.billing.StudentEligibility.isStudentPlan(request.planId())) {
+            String callerEmail = jwt != null ? jwt.getClaimAsString("email") : null;
+            io.conddo.core.billing.StudentEligibility.assertEligible(callerEmail);
+        }
         billingService.upgrade(tenantId, request.planId(), request.billingCycle());
         // Reread with the plan for the response.
         return ApiResponse.ok(SubscriptionDto.from(

@@ -164,6 +164,18 @@ public class Tenant {
         return planId;
     }
 
+    /** Change the tenant's product tier. Used by the auto-downgrade path
+     *  (grace → expired → free), the upgrade/downgrade admin path, and any
+     *  future customer-driven plan switch. The active {@code TenantSubscription}
+     *  row is still the transactional source of truth for billing; this field
+     *  is a denormalised cache the JWT-mint reads from. */
+    public void changePlanTo(String planId) {
+        if (planId == null || planId.isBlank()) {
+            throw new IllegalArgumentException("planId cannot be blank");
+        }
+        this.planId = planId.trim().toLowerCase();
+    }
+
     public String getCustomDomain() {
         return customDomain;
     }
