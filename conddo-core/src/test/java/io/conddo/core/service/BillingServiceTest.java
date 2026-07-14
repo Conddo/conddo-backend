@@ -84,9 +84,14 @@ class BillingServiceTest {
     }
 
     @Test
-    void createTrialFallsBackToLauncherOnUnknownPlanName() {
+    void createTrialFallsBackToDefaultOnUnknownPlanName() {
+        // Pricing v2 (V67) renamed the trial default plan launcher → starter.
+        // Unknown plan names should still fall through to whatever the current
+        // DEFAULT_PLAN is; we mock BOTH the unknown lookup and the fallback
+        // lookup so a future rename doesn't require re-editing this test to
+        // hunt for the new default name — just add the mock.
         when(planRepository.findByName("nonsense")).thenReturn(Optional.empty());
-        when(planRepository.findByName("launcher")).thenReturn(Optional.of(plan("launcher", LAUNCHER_ID)));
+        when(planRepository.findByName("starter")).thenReturn(Optional.of(plan("starter", LAUNCHER_ID)));
         when(subscriptionRepository.findActiveByTenantId(TENANT)).thenReturn(Optional.empty());
         when(subscriptionRepository.save(any(TenantSubscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
