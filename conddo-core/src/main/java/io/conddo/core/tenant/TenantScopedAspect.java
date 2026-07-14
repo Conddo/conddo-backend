@@ -14,19 +14,19 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * same connection as the method's queries — otherwise RLS would see a
  * different session state and the whole thing is theatre.
  *
- * <p><b>Ordering.</b> Spring's {@code @Transactional} advice runs at
- * {@link Ordered#LOWEST_PRECEDENCE}. We pick a lower numeric value here so
- * this aspect runs INSIDE the transaction (advice with lower order wraps
- * inside advice with higher order — Spring's inverted-precedence rule for
- * around-advice). Concretely: {@code Transactional} opens the tx, THEN this
- * aspect binds, THEN the method body runs, THEN this aspect clears (if
- * cross-tenant), THEN {@code Transactional} commits.
+ * <p><b>Ordering.</b> Spring Boot's default puts transaction advice at
+ * {@link Ordered#LOWEST_PRECEDENCE} which makes it the INNERMOST advisor —
+ * wrong for our purpose. We override that in {@link TenantAopConfig} by
+ * re-declaring {@code @EnableTransactionManagement} with a very-high-
+ * precedence order, so the transaction interceptor becomes the OUTERMOST
+ * wrapper. Chain then runs: {@code Transactional} opens the tx → this
+ * aspect binds → method body → this aspect clears (if cross-tenant) →
+ * {@code Transactional} commits.
  *
- * <p>If a caller forgets {@code @Transactional} on the method, the bind still
- * happens but on a fresh short-lived connection — the {@code SET set_config}
- * has no method body to protect. That's a latent bug we don't hide: the
- * aspect logs a warn once per class in a follow-up (kept out of this ship
- * to avoid dragging in a logger and changing behavior).
+ * <p>If a caller uses {@code @TenantScoped} without a surrounding
+ * {@code @Transactional}, the guard throws {@link IllegalStateException}
+ * with the offending method's signature — a silent no-op bind would be
+ * the worst possible failure mode (reads that look correct but bypass RLS).
  */
 @Aspect
 @Component
@@ -34,11 +34,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class TenantScopedAspect {
 
     /**
-     * Must be strictly less than
-     * {@link org.springframework.transaction.annotation.EnableTransactionManagement}'s
-     * default order ({@code Ordered.LOWEST_PRECEDENCE}) so we sit inside the
-     * transaction advice. Any positive int well below LOWEST_PRECEDENCE works;
-     * 100 leaves generous headroom for other integration aspects.
+     * Must be strictly HIGHER than {@link TenantAopConfig}'s explicit
+     * transaction-advice order ({@code HIGHEST_PRECEDENCE + 100}) so this
+     * aspect sits INSIDE the transaction wrapper. Any int well above that
+     * works; 100 leaves generous headroom below for future aspects that
+     * need to run even more outer (e.g. correlation-id, request logging).
      */
     public static final int ORDER = 100;
 
