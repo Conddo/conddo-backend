@@ -100,6 +100,21 @@ conddo:
     model: ${CONDDO_ANTHROPIC_MODEL:claude-sonnet-4-6}
     max-tokens: ${CONDDO_ANTHROPIC_MAX_TOKENS:1024}
 
+  # NVIDIA NIM (build.nvidia.com) — OpenAI-compatible endpoint. Used by
+  # CreditedAiGateway for the signup classifier path so onboarding doesn't
+  # burn OpenRouter credits for a pre-tenant call. Fully optional: set
+  # CONDDO_NVIDIA_API_KEY to enable; unset it and the router silently
+  # sends every call to OpenRouter as before.
+  #
+  # Default model is Llama 3.1 Nemotron 70B — strong at structured-JSON
+  # classification, free on the current NIM tier. Override with
+  # CONDDO_NVIDIA_MODEL if NVIDIA renames or deprecates.
+  nvidia:
+    base-url: ${CONDDO_NVIDIA_BASE_URL:https://integrate.api.nvidia.com/v1}
+    api-key: ${CONDDO_NVIDIA_API_KEY:}
+    model: ${CONDDO_NVIDIA_MODEL:nvidia/llama-3.1-nemotron-70b-instruct}
+    max-tokens: ${CONDDO_NVIDIA_MAX_TOKENS:1024}
+
   # Notification channels (PRD §6.4). provider 'log' = stub (the default).
   # SMS via Brevo (set provider=brevo + CONDDO_BREVO_API_KEY); email via Resend
   # (set provider=resend + CONDDO_RESEND_API_KEY + a verified CONDDO_EMAIL_FROM).
