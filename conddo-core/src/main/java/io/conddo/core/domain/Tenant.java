@@ -99,6 +99,12 @@ public class Tenant {
     @Column(name = "primary_color")
     private String primaryColor;
 
+    @Column(name = "secondary_color")
+    private String secondaryColor;
+
+    @Column(name = "font_pairing")
+    private String fontPairing;
+
     @Column(name = "logo_url")
     private String logoUrl;
 
@@ -330,6 +336,22 @@ public class Tenant {
 
     public void setPrimaryColor(String primaryColor) {
         this.primaryColor = primaryColor;
+    }
+
+    public String getSecondaryColor() {
+        return secondaryColor;
+    }
+
+    public void setSecondaryColor(String secondaryColor) {
+        this.secondaryColor = secondaryColor;
+    }
+
+    public String getFontPairing() {
+        return fontPairing;
+    }
+
+    public void setFontPairing(String fontPairing) {
+        this.fontPairing = fontPairing;
     }
 
     public String getLogoUrl() {
