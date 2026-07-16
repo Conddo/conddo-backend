@@ -52,4 +52,12 @@ public interface TenantSiteRepository extends JpaRepository<TenantSite, UUID> {
     java.util.List<TenantSite> findByActiveTrueOrderByCreatedAtDesc();
 
     java.util.List<TenantSite> findAllByOrderByCreatedAtDesc();
+
+    /** Cross-tenant site list for the admin per-tenant detail view. Caller
+     *  MUST have bound {@code app.cross_tenant=true}. */
+    @org.springframework.data.jpa.repository.Query(
+            value = "SELECT * FROM tenant_sites WHERE tenant_id = :tenantId "
+                    + "ORDER BY created_at DESC", nativeQuery = true)
+    java.util.List<TenantSite> findByTenantIdCrossTenant(
+            @org.springframework.data.repository.query.Param("tenantId") java.util.UUID tenantId);
 }

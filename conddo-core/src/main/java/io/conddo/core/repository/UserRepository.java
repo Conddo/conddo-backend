@@ -52,4 +52,20 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Query(value = "SELECT * FROM users WHERE email_verification_token_hash = :tokenHash", nativeQuery = true)
     Optional<User> findByEmailVerificationTokenHashCrossTenant(@Param("tokenHash") String tokenHash);
+
+    /**
+     * Cross-tenant lookup for the tenant's owner (earliest TENANT_ADMIN row).
+     * Used by the admin dashboard to surface the owner email alongside the
+     * tenant record. Native query so RLS's cross_tenant carve-out is the
+     * only gate — caller MUST bind {@code app.cross_tenant=true} first
+     * (typically via {@code @TenantScoped(crossTenant = true)}).
+     */
+    @Query(value = "SELECT * FROM users WHERE tenant_id = :tenantId "
+            + "AND role = 'TENANT_ADMIN' ORDER BY created_at ASC LIMIT 1", nativeQuery = true)
+    Optional<User> findOwnerByTenantIdCrossTenant(@Param("tenantId") UUID tenantId);
+
+    /** Cross-tenant staff head-count (TENANT_ADMIN + STAFF) for admin summary. */
+    @Query(value = "SELECT COUNT(*) FROM users WHERE tenant_id = :tenantId",
+            nativeQuery = true)
+    long countByTenantIdCrossTenant(@Param("tenantId") UUID tenantId);
 }

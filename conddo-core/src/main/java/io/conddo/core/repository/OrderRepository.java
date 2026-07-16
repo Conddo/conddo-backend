@@ -22,6 +22,12 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
     /** A customer's orders, newest first (§11.3 profile order history). */
     List<Order> findByCustomerIdOrderByCreatedAtDesc(UUID customerId);
 
+    /** Cross-tenant order count for the admin per-tenant summary. Caller
+     *  MUST bind {@code app.cross_tenant=true} first. */
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE tenant_id = :tenantId",
+            nativeQuery = true)
+    long countByTenantIdCrossTenant(@Param("tenantId") UUID tenantId);
+
     /** Orders not in a terminal stage — the dashboard's "pending orders" KPI. */
     @Query("select count(o) from Order o where lower(o.stage) not in :terminalStages")
     long countPending(@Param("terminalStages") Collection<String> terminalStages);

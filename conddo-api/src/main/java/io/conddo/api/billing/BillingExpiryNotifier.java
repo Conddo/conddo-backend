@@ -97,7 +97,7 @@ public class BillingExpiryNotifier {
     private static String firstNonBlank(String a, String b) {
         if (a != null && !a.isBlank()) {
             return a;
-        }
+        } 
         return b;
     }
 }
