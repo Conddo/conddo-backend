@@ -64,14 +64,25 @@ public class NotificationService {
     public void sendOrderAlert(String toEmail, String toPhone, String businessName,
                                String customerName, String orderReference, String totalNgn) {
         String subject = "New order on your conddo.io site";
+        String dashboardUrl = appBaseUrl + "/orders/" + nullSafe(orderReference);
         String text = "Hi " + nullSafe(businessName) + ",\n\n"
                 + nullSafe(customerName) + " just placed order " + nullSafe(orderReference)
                 + " for ₦" + nullSafe(totalNgn) + " on your conddo.io website.\n\n"
-                + "View it on your dashboard: " + appBaseUrl + "/orders/" + nullSafe(orderReference) + "\n\n"
+                + "View it on your dashboard: " + dashboardUrl + "\n\n"
                 + "— Conddo";
+        String html = templates.render("order-alert.html", Map.of(
+                "BUSINESS_NAME",   nullSafe(businessName),
+                "CUSTOMER_NAME",   nullSafe(customerName),
+                "ORDER_REFERENCE", nullSafe(orderReference),
+                "TOTAL_NGN",       nullSafe(totalNgn),
+                "DASHBOARD_URL",   dashboardUrl));
         if (toEmail != null && !toEmail.isBlank()) {
             try {
-                emailSender.send(toEmail, subject, text);
+                if (html.isBlank()) {
+                    emailSender.send(toEmail, subject, text);
+                } else {
+                    emailSender.sendHtml(toEmail, subject, html, text);
+                }
             } catch (RuntimeException ignored) {
                 // Provider blip — SMS is the fallback channel; swallow.
             }
@@ -95,16 +106,28 @@ public class NotificationService {
                                  String customerName, String service, String when,
                                  String contactPhone) {
         String subject = "New booking request on your conddo.io site";
+        String dashboardUrl = appBaseUrl + "/bookings";
         String text = "Hi " + nullSafe(businessName) + ",\n\n"
                 + nullSafe(customerName) + " just requested a booking"
                 + (service == null || service.isBlank() ? "" : " for " + service)
                 + (when == null || when.isBlank() ? "" : " at " + when)
                 + (contactPhone == null || contactPhone.isBlank() ? "" : " (contact: " + contactPhone + ")")
-                + ".\n\nReview it on your dashboard: " + appBaseUrl + "/bookings\n\n"
+                + ".\n\nReview it on your dashboard: " + dashboardUrl + "\n\n"
                 + "— Conddo";
+        String html = templates.render("booking-alert.html", Map.of(
+                "BUSINESS_NAME", nullSafe(businessName),
+                "CUSTOMER_NAME", nullSafe(customerName),
+                "SERVICE",       service == null || service.isBlank() ? "an appointment" : service,
+                "STARTS_AT",     when == null || when.isBlank() ? "the requested time" : when,
+                "CONTACT_PHONE", contactPhone == null || contactPhone.isBlank() ? "not provided" : contactPhone,
+                "DASHBOARD_URL", dashboardUrl));
         if (toEmail != null && !toEmail.isBlank()) {
             try {
-                emailSender.send(toEmail, subject, text);
+                if (html.isBlank()) {
+                    emailSender.send(toEmail, subject, text);
+                } else {
+                    emailSender.sendHtml(toEmail, subject, html, text);
+                }
             } catch (RuntimeException ignored) {
             }
         }
@@ -139,38 +162,72 @@ public class NotificationService {
         String subject;
         String text;
         String sms;
+        String eyebrow;
+        String headline;
+        String body;
+        String preheader;
+        // Amber for grace (still recoverable), rose for expired (paused).
+        String accent;
         String biz = nullSafe(businessName);
         String plan = nullSafe(planName);
+        String billingUrl = appBaseUrl + "/settings/billing";
         switch (toStatus) {
             case "grace" -> {
                 subject = "Your conddo.io trial just ended";
+                eyebrow = "Trial ended";
+                headline = "You're in your grace period";
+                body = "Your " + plan + " trial just ended for <strong>" + biz
+                        + "</strong>. You have " + gracePeriodDays
+                        + " days to add a payment method before access pauses.";
+                preheader = "Your " + plan + " trial ended. Add payment in the next "
+                        + gracePeriodDays + " days to keep going.";
+                accent = "#B45309"; // amber-700
                 text = "Hi " + biz + ",\n\n"
                         + "Your " + plan + " trial just ended. You're in a "
                         + gracePeriodDays + "-day grace period — add a payment method "
                         + "to keep your conddo.io features running.\n\n"
-                        + "Add payment: " + appBaseUrl + "/settings/billing\n\n"
+                        + "Add payment: " + billingUrl + "\n\n"
                         + "— Conddo";
                 sms = "Your conddo.io " + plan + " trial ended. " + gracePeriodDays
-                        + "-day grace period — add payment at " + appBaseUrl + "/settings/billing";
+                        + "-day grace period — add payment at " + billingUrl;
             }
             case "expired" -> {
                 subject = "Your conddo.io subscription has expired";
+                eyebrow = "Subscription paused";
+                headline = "Reactivate to restore access";
+                body = "Your " + plan + " subscription has expired and <strong>" + biz
+                        + "</strong>'s Conddo site is paused. Reactivate to restore access "
+                        + "to your customers.";
+                preheader = "Your " + plan
+                        + " subscription expired. Reactivate to bring your site back.";
+                accent = "#BE123C"; // rose-700
                 text = "Hi " + biz + ",\n\n"
                         + "Your " + plan + " subscription has expired and your conddo.io "
                         + "site is paused. Reactivate to restore access to your customers.\n\n"
-                        + "Reactivate: " + appBaseUrl + "/settings/billing\n\n"
+                        + "Reactivate: " + billingUrl + "\n\n"
                         + "— Conddo";
                 sms = "Your conddo.io " + plan + " subscription expired. Reactivate at "
-                        + appBaseUrl + "/settings/billing";
+                        + billingUrl;
             }
             default -> {
                 // Other states (cancelled-completion etc.) stay silent.
                 return;
             }
         }
+        String html = templates.render("plan-transition.html", Map.of(
+                "EYEBROW",      eyebrow,
+                "HEADLINE",     headline,
+                "BODY",         body,
+                "PREHEADER",    preheader,
+                "ACCENT_COLOR", accent,
+                "BILLING_URL",  billingUrl));
         if (toEmail != null && !toEmail.isBlank()) {
             try {
-                emailSender.send(toEmail, subject, text);
+                if (html.isBlank()) {
+                    emailSender.send(toEmail, subject, text);
+                } else {
+                    emailSender.sendHtml(toEmail, subject, html, text);
+                }
             } catch (RuntimeException ignored) {
             }
         }
@@ -211,21 +268,25 @@ public class NotificationService {
     public void sendTenantInvite(String toEmail, String firstName, String businessName,
                                   String tenantSlug, String inviteUrl, int expiryDays) {
         String subject = "Welcome to Conddo — " + businessName + " is ready";
+        String workspaceUrl = tenantSlug + ".getconddo.com";
         String text = "Hi " + safe(firstName) + ",\n\n"
-                + "We've created a Conddo workspace for " + businessName + ".\n"
+                + "We've created a Conddo workspace for " + businessName + ".\n\n"
+                + "Your sign-in details:\n"
+                + "  Workspace:     " + workspaceUrl + "\n"
+                + "  Sign-in email: " + safe(toEmail) + "\n\n"
                 + "Set your password to get started: " + inviteUrl + "\n\n"
                 + "Your first three steps:\n"
                 + "  1. Set your password using the link above\n"
                 + "  2. Add your logo and brand colours (30 seconds)\n"
-                + "  3. Publish your site — already live at "
-                + tenantSlug + ".getconddo.com\n\n"
+                + "  3. Publish your site — already live at " + workspaceUrl + "\n\n"
                 + "This invite link expires in " + expiryDays + " days.\n";
         String html = templates.render("tenant-invite.html", Map.of(
-                "FIRST_NAME",   safe(firstName),
+                "FIRST_NAME",    safe(firstName),
                 "BUSINESS_NAME", safe(businessName),
-                "TENANT_SLUG",  safe(tenantSlug),
-                "ACCEPT_URL",   safe(inviteUrl),
-                "EXPIRY_DAYS",  String.valueOf(expiryDays)));
+                "TENANT_SLUG",   safe(tenantSlug),
+                "OWNER_EMAIL",   safe(toEmail),
+                "ACCEPT_URL",    safe(inviteUrl),
+                "EXPIRY_DAYS",   String.valueOf(expiryDays)));
         if (html.isBlank()) {
             emailSender.send(toEmail, subject, text);
         } else {

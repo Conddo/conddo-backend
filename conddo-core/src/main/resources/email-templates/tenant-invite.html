@@ -44,6 +44,31 @@
                   </td>
                 </tr>
 
+                <!-- Sign-in credentials card — the tenant needs both to log in later, so surface them explicitly. -->
+                <tr>
+                  <td style="padding-bottom:20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FAF9F7; border:1px solid #ECEAE6; border-radius:12px;">
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#8A8A8A; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; padding:14px 18px 4px;">
+                          Your sign-in details
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:14px; line-height:22px; padding:2px 18px;">
+                          <span style="color:#565656;">Workspace</span>&nbsp;&nbsp;
+                          <a href="https://{{TENANT_SLUG}}.getconddo.com" style="color:#141414; text-decoration:none;"><strong>{{TENANT_SLUG}}.getconddo.com</strong></a>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:14px; line-height:22px; padding:2px 18px 14px;">
+                          <span style="color:#565656;">Sign-in email</span>&nbsp;&nbsp;
+                          <strong>{{OWNER_EMAIL}}</strong>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
                 <!-- Primary CTA — MSO bulletproof + standard anchor -->
                 <tr>
                   <td align="left" style="padding-bottom:28px;">

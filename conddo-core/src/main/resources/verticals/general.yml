@@ -1,9 +1,17 @@
 id: general
 name: General Business
 
-# Fallback for unknown / "general" verticals — a generic
-# orders-centric business. Reachable under both ids the rest of
-# the stack uses ("general" and "default") via the alias.
+# Fallback for unknown / "general" verticals. Kept intentionally narrow
+# so a tenant that lands here (unclassified signup, unusual business
+# type, AI classifier fell back) doesn't see every module in the
+# platform in their sidebar. If the tenant needs more, they turn on
+# specific modules from Settings → Modules; the vertical stops leaking
+# breadth by default.
+#
+# History: this file previously included orders / bookings / inventory
+# in starter, which meant any misclassified tenant got a dashboard
+# with restaurant/retail-only sections showing. Now: only truly
+# universal tools (website, CRM, payments, analytics).
 aliases:
   - default
 
@@ -11,19 +19,16 @@ tools:
   starter:
     - website
     - crm
-    - orders
-    - bookings
-    - inventory
     - payments
     - analytics
   business:
     - staff
     - marketing.social
     - marketing.email
-    - marketing.sms
     - marketing.leads
   pro:
     - marketing.ads
+    - marketing.sms
 
 orderStages:
   - Received
