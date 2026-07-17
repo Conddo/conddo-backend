@@ -140,6 +140,13 @@ public class Tenant {
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 
+    /** Soft-delete marker (V71). Null = live tenant. Non-null = admin
+     *  marked the tenant for deletion; the row and all children are kept
+     *  for audit + recovery but the tenant is hidden from admin lists
+     *  and sign-in is refused. Restore by nulling this out. */
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
     protected Tenant() {
     }
 
@@ -292,6 +299,29 @@ public class Tenant {
         if (name != null && !name.isBlank()) {
             this.name = name;
         }
+    }
+
+    /** Mark the tenant as soft-deleted (V71). Also flips status to
+     *  INACTIVE so any code path that predates the deleted_at check
+     *  still refuses access to the tenant's data. */
+    public void softDelete(OffsetDateTime at) {
+        this.deletedAt = at;
+        this.status = "INACTIVE";
+    }
+
+    /** Restore a soft-deleted tenant. Sets status back to ACTIVE so
+     *  the tenant is fully usable again. Idempotent when already live. */
+    public void restore() {
+        this.deletedAt = null;
+        this.status = "ACTIVE";
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    public OffsetDateTime getDeletedAt() {
+        return deletedAt;
     }
 
     public void deactivate() {

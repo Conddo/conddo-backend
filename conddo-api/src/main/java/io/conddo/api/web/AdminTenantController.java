@@ -15,6 +15,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -85,6 +86,33 @@ public class AdminTenantController {
         return ApiResponse.ok(TenantRow.of(service.detail(t.getId()).summary()));
     }
 
+    /**
+     * Soft-delete the tenant (V71). Requires the caller to type the
+     * tenant's slug in the request body as a confirmation gate — the
+     * FE surfaces this as "type {slug} to confirm" so accidental clicks
+     * can't nuke a tenant.
+     *
+     * <p>Row + all children are preserved for audit + recovery; the
+     * tenant is hidden from admin lists and sign-in is refused. Restore
+     * via {@code POST /admin/tenants/{id}/restore} (below).
+     */
+    @DeleteMapping("/{id}")
+    public ApiResponse<TenantRow> softDelete(@PathVariable UUID id,
+                                              @Valid @RequestBody SoftDeleteRequest body) {
+        Tenant t = service.softDelete(id, body.confirmSlug());
+        return ApiResponse.ok(TenantRow.of(service.detail(t.getId()).summary()));
+    }
+
+    /** Reverses a soft delete — the tenant comes back to ACTIVE with all
+     *  data intact. Idempotent when called on a live tenant. */
+    @PostMapping("/{id}/restore")
+    public ApiResponse<TenantRow> restore(@PathVariable UUID id) {
+        Tenant t = service.restore(id);
+        return ApiResponse.ok(TenantRow.of(service.detail(t.getId()).summary()));
+    }
+
+    public record SoftDeleteRequest(@NotBlank String confirmSlug) {}
+
     // ----- wire records ----------------------------------------------------
 
     public record CreateTenantRequest(
@@ -98,13 +126,13 @@ public class AdminTenantController {
     public record TenantRow(
             UUID id, String slug, String name,
             String verticalId, String planId,
-            String status, OffsetDateTime createdAt,
+            String status, OffsetDateTime createdAt, OffsetDateTime deletedAt,
             String ownerEmail, String ownerFullName,
             long usersCount) {
         static TenantRow of(TenantSummary s) {
             return new TenantRow(s.id(), s.slug(), s.name(),
                     s.verticalId(), s.planId(),
-                    s.status(), s.createdAt(),
+                    s.status(), s.createdAt(), s.deletedAt(),
                     s.ownerEmail(), s.ownerFullName(),
                     s.usersCount());
         }

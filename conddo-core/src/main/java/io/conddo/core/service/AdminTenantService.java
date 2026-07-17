@@ -104,7 +104,17 @@ public class AdminTenantService {
     @TenantScoped(crossTenant = true)
     @Transactional(readOnly = true)
     public List<TenantSummary> listAll() {
+        return listAll(false);
+    }
+
+    /** {@code includeDeleted = true} returns soft-deleted tenants too —
+     *  used by a future "restore" view. Default hides them so the main
+     *  panel stays clean. */
+    @TenantScoped(crossTenant = true)
+    @Transactional(readOnly = true)
+    public List<TenantSummary> listAll(boolean includeDeleted) {
         return tenantRepository.findAll().stream()
+                .filter(t -> includeDeleted || !t.isDeleted())
                 .sorted(Comparator.comparing(Tenant::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(this::summarize)
                 .toList();
@@ -115,7 +125,7 @@ public class AdminTenantService {
         long usersCount = userRepository.countByTenantIdCrossTenant(t.getId());
         return new TenantSummary(
                 t.getId(), t.getSlug(), t.getName(), t.getVerticalId(), t.getPlanId(),
-                t.getStatus(), t.getCreatedAt(),
+                t.getStatus(), t.getCreatedAt(), t.getDeletedAt(),
                 owner != null ? owner.getEmail() : null,
                 owner != null ? owner.getFullName() : null,
                 usersCount);
@@ -274,6 +284,48 @@ public class AdminTenantService {
         return tenantRepository.save(tenant);
     }
 
+    /**
+     * Soft-delete the tenant (V71). Row + all children stay intact for
+     * audit + recovery. The tenant is hidden from admin lists (unless
+     * {@code includeDeleted}) and sign-in is refused.
+     *
+     * <p>Caller MUST have verified user intent — the FE requires the
+     * admin to type the tenant slug to confirm; the service double-checks
+     * because the API endpoint is otherwise easy to hit by mistake.
+     *
+     * <p>Restore by calling {@link #restore(UUID)} — everything is
+     * recoverable.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public Tenant softDelete(UUID tenantId, String confirmSlug) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        if (confirmSlug == null || !confirmSlug.equals(tenant.getSlug())) {
+            throw new IllegalArgumentException(
+                    "confirmSlug must match the tenant's slug ('" + tenant.getSlug()
+                            + "'); got '" + confirmSlug + "'");
+        }
+        tenant.softDelete(java.time.OffsetDateTime.now());
+        Tenant saved = tenantRepository.save(tenant);
+        log.info("Tenant {} ({}) soft-deleted by admin", tenant.getSlug(), tenant.getId());
+        return saved;
+    }
+
+    /** Restore a soft-deleted tenant. Reverses {@link #softDelete}. */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public Tenant restore(UUID tenantId) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        tenant.restore();
+        Tenant saved = tenantRepository.save(tenant);
+        log.info("Tenant {} ({}) restored by admin", tenant.getSlug(), tenant.getId());
+        return saved;
+    }
+
     // ----- shared helpers --------------------------------------------------
 
     /** Issues a password-reset token for {@code email} in {@code tenantId}
@@ -304,7 +356,7 @@ public class AdminTenantService {
 
     public record TenantSummary(
             UUID id, String slug, String name, String verticalId, String planId,
-            String status, OffsetDateTime createdAt,
+            String status, OffsetDateTime createdAt, OffsetDateTime deletedAt,
             String ownerEmail, String ownerFullName,
             long usersCount) {}
 
