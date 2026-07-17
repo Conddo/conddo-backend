@@ -58,4 +58,39 @@ public class ResendEmailSender implements EmailSender {
             log.error("Resend email to {} failed: {}", toEmail, ex.getMessage());
         }
     }
+
+    /**
+     * Send a real HTML email with a plain-text alternative. Resend accepts
+     * {@code html} and {@code text} as sibling fields on the same payload
+     * and the recipient's client picks the appropriate one — HTML for the
+     * inbox render, text for accessibility tools + text-only clients.
+     *
+     * <p>The interface default falls through to {@link #send} with only the
+     * text body, which is why every prior HTML email arrived unstyled.
+     * Override is required for every real provider adapter — Brevo does
+     * the same in {@code BrevoEmailSender}.
+     */
+    @Override
+    public void sendHtml(String toEmail, String subject, String htmlBody, String textBody) {
+        try {
+            java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("from", from);
+            payload.put("to", List.of(toEmail));
+            payload.put("subject", subject);
+            if (htmlBody != null && !htmlBody.isBlank()) {
+                payload.put("html", htmlBody);
+            }
+            if (textBody != null && !textBody.isBlank()) {
+                payload.put("text", textBody);
+            }
+            restClient.post()
+                    .uri("/emails")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException ex) {
+            log.error("Resend HTML email to {} failed: {}", toEmail, ex.getMessage());
+        }
+    }
 }
