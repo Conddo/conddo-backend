@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+  <title>Welcome to Conddo</title>
+  <!--[if mso]><style>* { font-family: Arial, sans-serif !important; }</style><![endif]-->
+</head>
+<body style="margin:0; padding:0; background-color:#F4F3F0; -webkit-font-smoothing:antialiased;">
+  <!-- Preheader (hidden preview text shown in the inbox row) -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F4F3F0;">
+    {{BUSINESS_NAME}} is ready on Conddo. Click to set your password and get started.&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F3F0;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:600px;">
+
+          <!-- Logo -->
+          <tr>
+            <td align="left" style="padding:4px 8px 24px;">
+              <img src="{{LOGO_URL}}" alt="conddo.io" height="28" style="height:28px; width:auto; border:0; display:block;" />
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background-color:#FFFFFF; border:1px solid #ECEAE6; border-radius:14px; padding:40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:22px; font-weight:600; letter-spacing:-0.01em; padding-bottom:10px;">
+                    Welcome to Conddo, {{FIRST_NAME}} 👋
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#565656; font-size:15px; line-height:24px; padding-bottom:24px;">
+                    We&rsquo;ve created a Conddo workspace for
+                    <strong style="color:#141414;">{{BUSINESS_NAME}}</strong>.
+                    Click below to set your password and unlock your dashboard.
+                  </td>
+                </tr>
+
+                <!-- Primary CTA — MSO bulletproof + standard anchor -->
+                <tr>
+                  <td align="left" style="padding-bottom:28px;">
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ACCEPT_URL}}" style="height:48px;v-text-anchor:middle;width:220px;" arcsize="22%" stroke="f" fillcolor="#7C5CBF">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Set my password</center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-- -->
+                    <a href="{{ACCEPT_URL}}" style="display:inline-block; background-color:#7C5CBF; color:#FFFFFF; font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; text-decoration:none; padding:14px 28px; border-radius:10px;">Set my password</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+
+                <!-- Next-steps card -->
+                <tr>
+                  <td style="padding-bottom:24px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FAF9F7; border:1px solid #ECEAE6; border-radius:12px;">
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:13px; font-weight:600; padding:16px 18px 8px;">
+                          Your first three steps
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:14px; line-height:22px; padding:2px 18px;">
+                          <span style="color:#7C5CBF; font-weight:600;">1.</span>&nbsp;&nbsp;Set your password using the button above
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:14px; line-height:22px; padding:2px 18px;">
+                          <span style="color:#7C5CBF; font-weight:600;">2.</span>&nbsp;&nbsp;Add your logo &amp; brand colours (30 seconds)
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#141414; font-size:14px; line-height:22px; padding:2px 18px 16px;">
+                          <span style="color:#7C5CBF; font-weight:600;">3.</span>&nbsp;&nbsp;Publish your site &mdash; already live at
+                          <a href="https://{{TENANT_SLUG}}.getconddo.com" style="color:#7C5CBF; text-decoration:none;">{{TENANT_SLUG}}.getconddo.com</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Small print -->
+                <tr>
+                  <td style="font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#8A8A8A; font-size:13px; line-height:20px;">
+                    This invite link expires in {{EXPIRY_DAYS}} days. If you weren&rsquo;t expecting this, you can safely ignore this email.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 8px 0;">
+              <p style="margin:0; font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#9A9A9A; font-size:12px; line-height:18px;">
+                Conddo.io &mdash; your business: website, operations, and marketing in one place.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

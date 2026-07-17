@@ -202,6 +202,41 @@ public class NotificationService {
         }
     }
 
+    /**
+     * Tenant-invite email — sent by the admin dashboard when a Conddo staff
+     * member provisions a workspace on behalf of a customer. Guides the
+     * owner to set their password, then add brand, then publish. Best-effort:
+     * a delivery failure is logged inside the sender but never thrown.
+     */
+    public void sendTenantInvite(String toEmail, String firstName, String businessName,
+                                  String tenantSlug, String inviteUrl, int expiryDays) {
+        String subject = "Welcome to Conddo — " + businessName + " is ready";
+        String text = "Hi " + safe(firstName) + ",\n\n"
+                + "We've created a Conddo workspace for " + businessName + ".\n"
+                + "Set your password to get started: " + inviteUrl + "\n\n"
+                + "Your first three steps:\n"
+                + "  1. Set your password using the link above\n"
+                + "  2. Add your logo and brand colours (30 seconds)\n"
+                + "  3. Publish your site — already live at "
+                + tenantSlug + ".getconddo.com\n\n"
+                + "This invite link expires in " + expiryDays + " days.\n";
+        String html = templates.render("tenant-invite.html", Map.of(
+                "FIRST_NAME",   safe(firstName),
+                "BUSINESS_NAME", safe(businessName),
+                "TENANT_SLUG",  safe(tenantSlug),
+                "ACCEPT_URL",   safe(inviteUrl),
+                "EXPIRY_DAYS",  String.valueOf(expiryDays)));
+        if (html.isBlank()) {
+            emailSender.send(toEmail, subject, text);
+        } else {
+            emailSender.sendHtml(toEmail, subject, html, text);
+        }
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value;
+    }
+
     /** Password reset — delivers the reset token (and a reset link) by email. */
     public void sendPasswordReset(String toEmail, String resetToken) {
         String subject = "Reset your Conddo password";

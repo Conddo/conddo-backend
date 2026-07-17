@@ -6,6 +6,7 @@ import io.conddo.core.domain.TenantCreditAccount;
 import io.conddo.core.domain.TenantSite;
 import io.conddo.core.domain.User;
 import io.conddo.core.service.AdminTenantService;
+import io.conddo.core.service.AdminTenantService.AttentionRow;
 import io.conddo.core.service.AdminTenantService.InviteResult;
 import io.conddo.core.service.AdminTenantService.TenantDetail;
 import io.conddo.core.service.AdminTenantService.TenantSummary;
@@ -46,6 +47,14 @@ public class AdminTenantController {
                 .map(TenantRow::of).toList());
     }
 
+    /** Tenants that ended up in a bad state during signup — no site row,
+     *  no credit account, or unverified owner email. Powers the studio
+     *  "Needs attention" panel. */
+    @GetMapping("/attention")
+    public ApiResponse<List<AttentionRow>> attention() {
+        return ApiResponse.ok(service.attention());
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<TenantDetailRow> get(@PathVariable UUID id) {
         return ApiResponse.ok(TenantDetailRow.of(service.detail(id)));
@@ -59,7 +68,7 @@ public class AdminTenantController {
                 body.ownerEmail(), body.ownerFullName());
         return ResponseEntity
                 .status(org.springframework.http.HttpStatus.CREATED)
-                .body(ApiResponse.ok(CreateTenantResponse.of(result)));
+                .body(ApiResponse.ok(CreateTenantResponse.of(result, body.ownerEmail())));
     }
 
     @PostMapping("/{id}/reset-password")
@@ -151,12 +160,14 @@ public class AdminTenantController {
     public record CreateTenantResponse(
             UUID tenantId, String slug, String name,
             String verticalId, String planId,
-            String inviteUrl) {
-        static CreateTenantResponse of(InviteResult r) {
+            String inviteUrl,
+            String ownerEmail,
+            boolean emailSent) {
+        static CreateTenantResponse of(InviteResult r, String ownerEmail) {
             return new CreateTenantResponse(
                     r.tenant().getId(), r.tenant().getSlug(), r.tenant().getName(),
                     r.tenant().getVerticalId(), r.tenant().getPlanId(),
-                    r.inviteUrl());
+                    r.inviteUrl(), ownerEmail, r.emailSent());
         }
     }
 

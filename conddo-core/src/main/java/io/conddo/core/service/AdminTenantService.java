@@ -121,6 +121,55 @@ public class AdminTenantService {
                 usersCount);
     }
 
+    // ----- attention -------------------------------------------------------
+
+    /**
+     * Every tenant that's in a state a support agent should intervene on.
+     * Currently detects three failure modes:
+     * <ul>
+     *   <li><b>NO_SITE</b> — {@link io.conddo.api.signup.TenantActivationListener}
+     *       fires site provisioning asynchronously; when AI generation throws
+     *       it swallows the error and no {@code tenant_sites} row lands.
+     *       The tenant's subdomain 404s until we notice.</li>
+     *   <li><b>NO_CREDITS</b> — same async provisioning pattern for
+     *       {@code tenant_credit_accounts}. A tenant without a credit account
+     *       cannot use any AI feature.</li>
+     *   <li><b>OWNER_UNVERIFIED</b> — signup was completed but the owner
+     *       never clicked the email-verification link. Some flows (publish,
+     *       payments) gate on this.</li>
+     * </ul>
+     * Aggregated in one pass so the FE panel loads with a single request.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional(readOnly = true)
+    public List<AttentionRow> attention() {
+        List<Tenant> tenants = tenantRepository.findAll();
+        List<AttentionRow> rows = new java.util.ArrayList<>();
+        for (Tenant t : tenants) {
+            List<String> reasons = new java.util.ArrayList<>();
+            List<io.conddo.core.domain.TenantSite> sites =
+                    tenantSiteRepository.findByTenantIdCrossTenant(t.getId());
+            if (sites.isEmpty()) {
+                reasons.add("NO_SITE");
+            }
+            if (creditAccountRepository.findByTenantId(t.getId()).isEmpty()) {
+                reasons.add("NO_CREDITS");
+            }
+            User owner = userRepository.findOwnerByTenantIdCrossTenant(t.getId()).orElse(null);
+            if (owner != null && !owner.isEmailVerified()) {
+                reasons.add("OWNER_UNVERIFIED");
+            }
+            if (!reasons.isEmpty()) {
+                rows.add(new AttentionRow(
+                        t.getId(), t.getSlug(), t.getName(),
+                        t.getVerticalId(), t.getPlanId(),
+                        owner != null ? owner.getEmail() : null,
+                        reasons, t.getCreatedAt()));
+            }
+        }
+        return rows;
+    }
+
     // ----- detail ----------------------------------------------------------
 
     @TenantScoped(crossTenant = true)
@@ -160,12 +209,36 @@ public class AdminTenantService {
                 businessName, io.conddo.core.common.Slugs.from(businessName),
                 verticalId, planId,
                 ownerEmail, throwawayPassword, ownerFullName);
-        // Provisioning credit charge is booked inside TenantService.create → CreditService
-        // Nothing more to do here.
         String inviteUrl = issueSetPasswordLink(ownerEmail, tenant.getId());
-        log.info("Admin provisioned tenant {} ({}), invite URL prepared for {}",
-                tenant.getSlug(), tenant.getId(), ownerEmail);
-        return new InviteResult(tenant, inviteUrl);
+
+        // Best-effort auto-send. The controller still returns inviteUrl so
+        // the admin has a copy-fallback if the tenant reports "no email".
+        boolean emailSent = false;
+        try {
+            notificationService.sendTenantInvite(
+                    ownerEmail,
+                    firstNameOf(ownerFullName),
+                    businessName,
+                    tenant.getSlug(),
+                    inviteUrl,
+                    (int) INVITE_TTL.toDays());
+            emailSent = true;
+        } catch (RuntimeException ex) {
+            // The sender is already fail-safe (Resend/Brevo adapters log and
+            // swallow provider errors), but a template-render or wiring bug
+            // could still throw here. Log + fall through — the tenant + row
+            // are already saved, and the admin can copy the URL manually.
+            log.warn("Tenant invite email send failed for tenant {} ({}): {}",
+                    tenant.getSlug(), tenant.getId(), ex.getMessage());
+        }
+        log.info("Admin provisioned tenant {} ({}), owner={}, emailSent={}",
+                tenant.getSlug(), tenant.getId(), ownerEmail, emailSent);
+        return new InviteResult(tenant, inviteUrl, emailSent);
+    }
+
+    private static String firstNameOf(String fullName) {
+        if (fullName == null || fullName.isBlank()) return "there";
+        return fullName.trim().split("\\s+")[0];
     }
 
     // ----- reset password (admin-triggered) --------------------------------
@@ -243,5 +316,15 @@ public class AdminTenantService {
             List<TenantSite> sites,
             TenantCreditAccount credits) {}
 
-    public record InviteResult(Tenant tenant, String inviteUrl) {}
+    public record InviteResult(Tenant tenant, String inviteUrl, boolean emailSent) {}
+
+    /** Compact wire shape for the "Needs attention" panel. {@code reasons}
+     *  are string codes rather than an enum so the FE can render new codes
+     *  even before the FE type is redeployed. */
+    public record AttentionRow(
+            UUID id, String slug, String name,
+            String verticalId, String planId,
+            String ownerEmail,
+            List<String> reasons,
+            java.time.OffsetDateTime createdAt) {}
 }
