@@ -66,8 +66,36 @@ public class PublicManagedSiteController {
         resp.put("slug", tenant.getSlug());
         resp.put("customDomain", site.getCustomDomain());
         resp.put("sections", site.getSections());
-        resp.put("theme", site.getTheme());
+        resp.put("theme", mergedTheme(site, tenant));
+        resp.put("logoUrl", tenant.getLogoUrl());
         resp.put("publishedAt", site.getPublishedAt() != null ? site.getPublishedAt().toString() : null);
         return ApiResponse.ok(resp);
+    }
+
+    /**
+     * Overlays the tenant's live brand (from Settings → Brand) on top of
+     * the site's persisted theme snapshot. Brand fields WIN so that a
+     * change in the dashboard is reflected on the live site immediately
+     * — no republish needed. Only overrides non-null brand values so a
+     * partially-branded tenant still gets whatever the site-level theme
+     * had as a fallback.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mergedTheme(TenantSite site, Tenant tenant) {
+        Map<String, Object> theme = new LinkedHashMap<>();
+        Object existing = site.getTheme();
+        if (existing instanceof Map<?, ?> m) {
+            m.forEach((k, v) -> theme.put(String.valueOf(k), v));
+        }
+        if (tenant.getPrimaryColor() != null && !tenant.getPrimaryColor().isBlank()) {
+            theme.put("primaryColor", tenant.getPrimaryColor());
+        }
+        if (tenant.getSecondaryColor() != null && !tenant.getSecondaryColor().isBlank()) {
+            theme.put("secondaryColor", tenant.getSecondaryColor());
+        }
+        if (tenant.getFontPairing() != null && !tenant.getFontPairing().isBlank()) {
+            theme.put("fontPairing", tenant.getFontPairing());
+        }
+        return theme;
     }
 }
