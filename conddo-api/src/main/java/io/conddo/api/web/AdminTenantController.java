@@ -91,6 +91,56 @@ public class AdminTenantController {
 
     public record SetPasswordResponse(String password) {}
 
+    // ----- admin brand + managed-site (ghostwrite path) --------------------
+
+    /** Set brand fields for a tenant (logo URL + colours). Used when we act
+     *  as the AI for tenants without credits. Nulls skip. */
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/brand")
+    public ApiResponse<BrandRow> setBrand(@PathVariable UUID id,
+                                           @RequestBody BrandRequest body) {
+        io.conddo.core.domain.Tenant tenant = service.setBrand(id,
+                body.logoUrl(), body.primaryColor(), body.secondaryColor());
+        return ApiResponse.ok(new BrandRow(
+                tenant.getLogoUrl(), tenant.getPrimaryColor(), tenant.getSecondaryColor()));
+    }
+
+    public record BrandRequest(String logoUrl, String primaryColor, String secondaryColor) {}
+    public record BrandRow(String logoUrl, String primaryColor, String secondaryColor) {}
+
+    /** Push a draft sections + theme for the tenant's managed site — the
+     *  admin ghostwriting the AI. Followed by a publish call to go live. */
+    @org.springframework.web.bind.annotation.PutMapping("/{id}/managed-site")
+    public ApiResponse<java.util.Map<String, Object>> setManagedSite(
+            @PathVariable UUID id,
+            @RequestBody ManagedSiteRequest body) {
+        io.conddo.core.domain.TenantSite site = service.setManagedSiteDraft(
+                id, body.sections(), body.theme());
+        return ApiResponse.ok(managedSiteDto(site));
+    }
+
+    /** Copy draft to live + approve + activate. */
+    @PostMapping("/{id}/managed-site/publish")
+    public ApiResponse<java.util.Map<String, Object>> publishManagedSite(@PathVariable UUID id) {
+        io.conddo.core.domain.TenantSite site = service.publishManagedSite(id);
+        return ApiResponse.ok(managedSiteDto(site));
+    }
+
+    public record ManagedSiteRequest(
+            java.util.Map<String, Object> sections,
+            java.util.Map<String, Object> theme) {}
+
+    private static java.util.Map<String, Object> managedSiteDto(io.conddo.core.domain.TenantSite s) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("id", s.getId());
+        out.put("subdomain", s.getSubdomain());
+        out.put("qaApproved", s.isQaApproved());
+        out.put("active", s.isActive());
+        out.put("publishedAt", s.getPublishedAt() != null ? s.getPublishedAt().toString() : null);
+        out.put("draftSections", s.getDraftSections());
+        out.put("draftTheme", s.getDraftTheme());
+        return out;
+    }
+
     @PostMapping("/{id}/deactivate")
     public ApiResponse<TenantRow> deactivate(@PathVariable UUID id) {
         Tenant t = service.deactivate(id);

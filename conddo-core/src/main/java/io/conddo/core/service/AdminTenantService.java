@@ -479,6 +479,80 @@ public class AdminTenantService {
         return sb.toString();
     }
 
+    // ----- admin brand + managed-site (ghostwrite path) --------------------
+
+    /**
+     * Set brand fields for a tenant from the admin console. Used when we
+     * act as the AI for tenants who are out of credits or when we're
+     * bootstrapping a demo tenant. Any null field is left untouched.
+     *
+     * <p>The logo URL is stored as-is — for reliable rendering the caller
+     * should pass a URL that's hotlink-friendly (Cloudinary, S3, etc.),
+     * not a Google Drive share link. A future admin-upload endpoint will
+     * mirror arbitrary URLs to our Cloudinary.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public Tenant setBrand(UUID tenantId, String logoUrl, String primaryColor,
+                            String secondaryColor) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        if (logoUrl != null) tenant.setLogoUrl(logoUrl);
+        if (primaryColor != null) tenant.setPrimaryColor(primaryColor);
+        if (secondaryColor != null) tenant.setSecondaryColor(secondaryColor);
+        return tenantRepository.save(tenant);
+    }
+
+    /**
+     * Admin-set the tenant's managed-site draft (sections + theme). Used
+     * when we ghostwrite the AI's role — for instance when a tenant is
+     * out of AI credits or when their initial generation failed.
+     *
+     * <p>Provisions the row on demand if the tenant doesn't have one yet
+     * (legacy tenants pre-managed-site, or tenants whose async seed didn't
+     * fire). Returns the resulting site row.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public TenantSite setManagedSiteDraft(UUID tenantId,
+                                           java.util.Map<String, Object> sections,
+                                           java.util.Map<String, Object> theme) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        java.util.List<TenantSite> sites = tenantSiteRepository.findByTenantIdCrossTenant(tenantId);
+        TenantSite managed = sites.stream().filter(TenantSite::isManaged).findFirst().orElse(null);
+        if (managed == null) {
+            managed = TenantSite.managed(tenantId, tenant.getSlug(), sections, theme);
+        } else {
+            managed.updateDraft(sections, theme);
+        }
+        return tenantSiteRepository.save(managed);
+    }
+
+    /**
+     * Publish the tenant's managed-site draft to live — copies draft to
+     * live sections/theme, stamps qaApproved + active, and flips
+     * publishedAt so the public renderer picks it up.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public TenantSite publishManagedSite(UUID tenantId) {
+        java.util.List<TenantSite> sites = tenantSiteRepository.findByTenantIdCrossTenant(tenantId);
+        TenantSite managed = sites.stream().filter(TenantSite::isManaged).findFirst()
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "No managed site for tenant " + tenantId));
+        managed.publishDraft(java.time.OffsetDateTime.now(clock));
+        if (!managed.isQaApproved()) {
+            managed.approveQa(null, java.time.OffsetDateTime.now(clock));
+        }
+        if (!managed.isActive()) {
+            managed.activate();
+        }
+        return tenantSiteRepository.save(managed);
+    }
+
     // ----- deactivate ------------------------------------------------------
 
     /** Soft-deactivate the tenant. Data preserved; sign-in blocked on the
