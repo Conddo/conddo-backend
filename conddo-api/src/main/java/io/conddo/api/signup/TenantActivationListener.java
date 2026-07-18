@@ -2,8 +2,11 @@ package io.conddo.api.signup;
 
 import io.conddo.core.common.NotFoundException;
 import io.conddo.core.domain.Tenant;
+import io.conddo.core.domain.User;
+import io.conddo.core.notify.NotificationService;
 import io.conddo.core.payments.PaymentsGateway;
 import io.conddo.core.repository.TenantRepository;
+import io.conddo.core.repository.UserRepository;
 import io.conddo.core.service.BillingService;
 import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.service.WebsiteGenerationService;
@@ -11,6 +14,7 @@ import io.conddo.core.signup.TenantActivatedEvent;
 import io.conddo.core.signup.WebsiteTypeRecommendation;
 import io.conddo.core.signup.WebsiteTypeResolver;
 import io.conddo.core.studio.StudioJobGateway;
+import io.conddo.core.tenant.TenantScoped;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -38,27 +42,62 @@ public class TenantActivationListener {
     private static final Logger log = LoggerFactory.getLogger(TenantActivationListener.class);
 
     private final TenantRepository tenantRepository;
+    private final UserRepository userRepository;
     private final WebsiteTypeResolver websiteTypeResolver;
     private final StudioJobGateway studioJobGateway;
     private final PaymentsGateway paymentsGateway;
     private final BillingService billingService;
     private final WebsiteGenerationService websiteGeneration;
     private final TenantSiteService tenantSiteService;
+    private final NotificationService notificationService;
 
     public TenantActivationListener(TenantRepository tenantRepository,
+                                    UserRepository userRepository,
                                     WebsiteTypeResolver websiteTypeResolver,
                                     StudioJobGateway studioJobGateway,
                                     PaymentsGateway paymentsGateway,
                                     BillingService billingService,
                                     WebsiteGenerationService websiteGeneration,
-                                    TenantSiteService tenantSiteService) {
+                                    TenantSiteService tenantSiteService,
+                                    NotificationService notificationService) {
         this.tenantRepository = tenantRepository;
+        this.userRepository = userRepository;
         this.websiteTypeResolver = websiteTypeResolver;
         this.studioJobGateway = studioJobGateway;
         this.paymentsGateway = paymentsGateway;
         this.billingService = billingService;
         this.websiteGeneration = websiteGeneration;
         this.tenantSiteService = tenantSiteService;
+        this.notificationService = notificationService;
+    }
+
+    /**
+     * Fifth handler on the same event: email the platform admin so we know
+     * within seconds when a new tenant signs up. No-op when
+     * {@code conddo.notify.platform-admin-email} is unset. Cross-tenant so
+     * the owner-user lookup works — the event handler doesn't have a bound
+     * tenant context.
+     */
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    @TenantScoped(crossTenant = true)
+    public void onTenantActivated_notifyPlatformAdmin(TenantActivatedEvent event) {
+        try {
+            Tenant tenant = tenantRepository.findById(event.tenantId())
+                    .orElseThrow(() -> new NotFoundException("Tenant " + event.tenantId() + " vanished"));
+            User owner = userRepository.findOwnerByTenantIdCrossTenant(tenant.getId()).orElse(null);
+            notificationService.sendPlatformSignupAlert(
+                    tenant.getName(),
+                    tenant.getVerticalId(),
+                    tenant.getPlanId(),
+                    owner != null ? owner.getEmail() : tenant.getContactEmail(),
+                    owner != null ? owner.getFullName() : null,
+                    tenant.getSlug());
+        } catch (RuntimeException ex) {
+            log.error("Platform-admin signup notification failed for tenant {}: {}",
+                    event.tenantId(), ex.getMessage());
+        }
     }
 
     @Async

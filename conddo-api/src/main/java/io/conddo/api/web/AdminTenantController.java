@@ -6,8 +6,10 @@ import io.conddo.core.domain.TenantCreditAccount;
 import io.conddo.core.domain.TenantSite;
 import io.conddo.core.domain.User;
 import io.conddo.core.service.AdminTenantService;
+import io.conddo.core.service.AdminTenantService.AdminModuleRow;
 import io.conddo.core.service.AdminTenantService.AttentionRow;
 import io.conddo.core.service.AdminTenantService.InviteResult;
+import io.conddo.core.service.AdminTenantService.PurgeResult;
 import io.conddo.core.service.AdminTenantService.TenantDetail;
 import io.conddo.core.service.AdminTenantService.TenantSummary;
 import jakarta.validation.Valid;
@@ -112,6 +114,50 @@ public class AdminTenantController {
     }
 
     public record SoftDeleteRequest(@NotBlank String confirmSlug) {}
+
+    // ----- session + seed maintenance --------------------------------------
+
+    /** Force-logout the tenant — invalidates every refresh token, so all
+     *  their users are bounced to /login on next request and get a fresh
+     *  JWT against the current vertical / plan / overrides. */
+    @PostMapping("/{id}/reset-sessions")
+    public ApiResponse<SessionResetResponse> resetSessions(@PathVariable UUID id) {
+        int deleted = service.resetSessions(id);
+        return ApiResponse.ok(new SessionResetResponse(deleted));
+    }
+
+    /** Delete leftover vertical seed rows (products) whose SKUs don't match
+     *  the tenant's current vertical, AND clear stale
+     *  {@code tenant_module_overrides}. Useful after a mis-provisioned tenant
+     *  is reclassified. */
+    @PostMapping("/{id}/purge-seed")
+    public ApiResponse<PurgeResult> purgeSeed(@PathVariable UUID id) {
+        return ApiResponse.ok(service.purgeVerticalSeed(id));
+    }
+
+    public record SessionResetResponse(int refreshTokensDeleted) {}
+
+    // ----- module admin ----------------------------------------------------
+
+    /** Every known module with its state for this tenant. Matches
+     *  {@code /tenant/modules} in shape but is admin-triggered and
+     *  cross-tenant. */
+    @GetMapping("/{id}/modules")
+    public ApiResponse<List<AdminModuleRow>> listModules(@PathVariable UUID id) {
+        return ApiResponse.ok(service.listModules(id));
+    }
+
+    /** Enable or disable a specific module for this tenant. Writes a
+     *  {@code tenant_module_overrides} row; the resolver picks it up on
+     *  the next request. */
+    @PostMapping("/{id}/modules/{moduleId}")
+    public ApiResponse<AdminModuleRow> setModule(@PathVariable UUID id,
+                                                  @PathVariable String moduleId,
+                                                  @Valid @RequestBody SetModuleRequest body) {
+        return ApiResponse.ok(service.setModule(id, moduleId, body.enabled()));
+    }
+
+    public record SetModuleRequest(boolean enabled) {}
 
     // ----- wire records ----------------------------------------------------
 

@@ -3,8 +3,11 @@ package io.conddo.core.repository;
 import io.conddo.core.domain.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -70,4 +73,14 @@ public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpec
         int getReorderThreshold();
         long getSold();
     }
+
+    /** Admin seed-purge: delete products of {@code tenantId} whose SKU is in
+     *  the given seed-SKU set. Native + cross-tenant so an admin can clear
+     *  the leftover pharmacy demo rows when a tenant was mis-provisioned as
+     *  pharmacy and then reclassified. Returns the number of rows deleted. */
+    @Modifying
+    @Query(value = "DELETE FROM products WHERE tenant_id = :tenantId AND sku IN (:skus)",
+            nativeQuery = true)
+    int deleteBySkuInCrossTenant(@Param("tenantId") UUID tenantId,
+                                  @Param("skus") Collection<String> skus);
 }

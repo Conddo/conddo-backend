@@ -24,15 +24,55 @@ public class NotificationService {
     private final EmailTemplates templates;
     private final String appBaseUrl;
     private final String otpExpiryMinutes;
+    private final String platformAdminEmail;
 
     public NotificationService(SmsSender smsSender, EmailSender emailSender, EmailTemplates templates,
                                @Value("${conddo.app.base-url:https://app.conddo.io}") String appBaseUrl,
-                               @Value("${conddo.security.otp.ttl:10m}") String otpTtl) {
+                               @Value("${conddo.security.otp.ttl:10m}") String otpTtl,
+                               @Value("${conddo.notify.platform-admin-email:}") String platformAdminEmail) {
         this.smsSender = smsSender;
         this.emailSender = emailSender;
         this.templates = templates;
         this.appBaseUrl = appBaseUrl;
         this.otpExpiryMinutes = otpTtl.replaceAll("[^0-9]", "").isBlank() ? "10" : otpTtl.replaceAll("[^0-9]", "");
+        this.platformAdminEmail = platformAdminEmail;
+    }
+
+    /**
+     * Notifies the platform admin (Conddo staff mailbox) that a new tenant
+     * just signed up. No-op when {@code conddo.notify.platform-admin-email}
+     * is unset. Fires from the {@code TenantActivatedEvent} after-commit
+     * listener so it never blocks signup.
+     */
+    public void sendPlatformSignupAlert(String businessName, String vertical, String planId,
+                                         String ownerEmail, String ownerFullName,
+                                         String tenantSlug) {
+        if (platformAdminEmail == null || platformAdminEmail.isBlank()) {
+            return;
+        }
+        String subject = "New Conddo signup: " + safe(businessName);
+        String workspaceUrl = safe(tenantSlug) + ".getconddo.com";
+        String text = "A new tenant just signed up on Conddo.\n\n"
+                + "  Business:      " + safe(businessName) + "\n"
+                + "  Vertical:      " + safe(vertical) + "\n"
+                + "  Plan:          " + safe(planId) + "\n"
+                + "  Owner:         " + safe(ownerFullName) + " <" + safe(ownerEmail) + ">\n"
+                + "  Workspace URL: " + workspaceUrl + "\n\n"
+                + "Review in the admin dashboard: " + appBaseUrl.replace("app.", "studio.")
+                + "/admin/tenants\n";
+        String html = templates.render("platform-signup-alert.html", Map.of(
+                "BUSINESS_NAME",  safe(businessName),
+                "VERTICAL",       safe(vertical),
+                "PLAN",           safe(planId),
+                "OWNER_NAME",     safe(ownerFullName),
+                "OWNER_EMAIL",    safe(ownerEmail),
+                "WORKSPACE_URL",  workspaceUrl,
+                "ADMIN_URL",      appBaseUrl.replace("app.", "studio.") + "/admin/tenants"));
+        if (html.isBlank()) {
+            emailSender.send(platformAdminEmail, subject, text);
+        } else {
+            emailSender.sendHtml(platformAdminEmail, subject, html, text);
+        }
     }
 
     /** Signup verification code by SMS (needs a funded SMS provider, e.g. Brevo credits). */

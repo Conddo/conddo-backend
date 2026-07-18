@@ -55,6 +55,23 @@ conddo:
     # on day one. Tests override this to false.
     seed-sample-data: ${CONDDO_SIGNUP_SEED_SAMPLE_DATA:true}
 
+  # Platform-side notifications (Conddo staff, not tenants).
+  notify:
+    # Receives a branded email every time a new tenant signs up. Leave blank
+    # to disable. Set via CONDDO_PLATFORM_ADMIN_EMAIL on the EC2 host.
+    platform-admin-email: ${CONDDO_PLATFORM_ADMIN_EMAIL:}
+
+  # Onboarding classifier — how /auth/register/classify picks a vertical +
+  # module set for a mid-signup tenant.
+  #   keyword (default) — deterministic scan, no AI spend, no rate ceiling.
+  #                       Fits the target persona (owner-led SMEs on WhatsApp
+  #                       + spreadsheets) whose descriptions carry clear
+  #                       vertical + pain signals.
+  #   ai              — always call the LLM (previous default).
+  #   hybrid          — keyword first; LLM only when keyword confidence < 0.5.
+  classify:
+    mode: ${CONDDO_CLASSIFY_MODE:keyword}
+
   # Media storage via Cloudinary (§11.12). Upload returns a permanent, public,
   # CDN-backed secure_url (embedded in the dashboard, public website + emails).
   cloudinary:

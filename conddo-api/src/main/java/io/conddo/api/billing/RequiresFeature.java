@@ -23,9 +23,12 @@ public @interface RequiresFeature {
     /** The {@code plan_features.feature_key} to check (e.g. {@code "ad_management"}). */
     String value();
 
-    /** Human plan name surfaced in the 403 body (e.g. {@code "Growth"}). */
-    String requiredPlan() default "Growth";
+    /** Canonical plan name (matches {@code subscription_plans.name}) used to
+     *  look up the live price. Case-insensitive. Default {@code growth}. */
+    String requiredPlan() default "growth";
 
-    /** Required plan monthly price in Naira, surfaced in the 403 body for the upgrade CTA. */
-    int requiredPlanPrice() default 45000;
+    /** Fallback plan monthly price (Naira) surfaced in the 403 body only when
+     *  the DB lookup fails. Live price is read from {@code subscription_plans}
+     *  at request time, so this default is a safety net, not the source of truth. */
+    int requiredPlanPrice() default 15000;
 }

@@ -4,12 +4,13 @@ import io.conddo.api.security.InMemoryRateLimiter;
 import io.conddo.core.auth.RegistrationService;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.common.RateLimitExceededException;
+import io.conddo.core.service.KeywordModuleClassifier;
 import io.conddo.core.service.ModuleSuggestionService;
 import io.conddo.core.service.ModuleSuggestionService.Result;
 import io.conddo.core.service.ModuleSuggestionService.Score;
+import org.springframework.beans.factory.annotation.Value;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -47,15 +48,24 @@ public class OnboardingClassifyController {
     static final int MAX_ATTEMPTS_PER_REGISTRATION = 5;
 
     private final ModuleSuggestionService suggestionService;
+    private final KeywordModuleClassifier keywordClassifier;
     private final RegistrationService registrationService;
     private final InMemoryRateLimiter rateLimiter;
+    /** {@code keyword} (default) = deterministic classifier, no AI spend.
+     *  {@code ai} = call the LLM. {@code hybrid} = keyword first, LLM only when
+     *  keyword vertical confidence is below the 0.5 threshold. */
+    private final String mode;
 
     public OnboardingClassifyController(ModuleSuggestionService suggestionService,
+                                        KeywordModuleClassifier keywordClassifier,
                                         RegistrationService registrationService,
-                                        InMemoryRateLimiter rateLimiter) {
+                                        InMemoryRateLimiter rateLimiter,
+                                        @Value("${conddo.classify.mode:keyword}") String mode) {
         this.suggestionService = suggestionService;
+        this.keywordClassifier = keywordClassifier;
         this.registrationService = registrationService;
         this.rateLimiter = rateLimiter;
+        this.mode = mode == null ? "keyword" : mode.trim().toLowerCase();
     }
 
     @PostMapping("/classify")
@@ -75,7 +85,7 @@ public class OnboardingClassifyController {
                     "This signup has reached the classification limit. Continue with the current suggestions.");
         }
 
-        Result result = suggestionService.suggest(body.description(), body.verticalHint());
+        Result result = classifyByMode(body.description(), body.verticalHint());
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("vertical", result.vertical());
         resp.put("verticalConfidence", result.verticalConfidence());
@@ -83,6 +93,26 @@ public class OnboardingClassifyController {
         resp.put("recommended", result.recommended().stream()
                 .map(OnboardingClassifyController::toRow).toList());
         return ApiResponse.ok(resp);
+    }
+
+    /** Route the request through the configured classifier. Keyword is the
+     *  default: deterministic, zero AI spend, indistinguishable wire shape.
+     *  Hybrid keeps AI as a low-confidence fallback so we never pay for
+     *  descriptions that keyword handles fine. */
+    private Result classifyByMode(String description, String verticalHint) {
+        switch (mode) {
+            case "ai":
+                return suggestionService.suggest(description, verticalHint);
+            case "hybrid":
+                Result kw = keywordClassifier.classify(description, verticalHint);
+                if (kw.verticalConfidence() < 0.5) {
+                    return suggestionService.suggest(description, verticalHint);
+                }
+                return kw;
+            case "keyword":
+            default:
+                return keywordClassifier.classify(description, verticalHint);
+        }
     }
 
     private static Map<String, Object> toRow(Score s) {
@@ -105,9 +135,12 @@ public class OnboardingClassifyController {
         return request.getRemoteAddr();
     }
 
+    /** {@code description} may be blank when {@code verticalHint} is set —
+     *  the picker-first onboarding flow lets tenants pick a vertical without
+     *  writing a description. The classifier requires at least one signal. */
     public record ClassifyRequest(
             @NotNull UUID registrationId,
-            @NotBlank String description,
+            String description,
             String verticalHint
     ) {
     }

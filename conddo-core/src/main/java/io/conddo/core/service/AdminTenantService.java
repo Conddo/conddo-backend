@@ -11,11 +11,19 @@ import io.conddo.core.domain.User;
 import io.conddo.core.notify.NotificationService;
 import io.conddo.core.repository.OrderRepository;
 import io.conddo.core.repository.PasswordResetTokenRepository;
+import io.conddo.core.repository.ProductRepository;
+import io.conddo.core.repository.RefreshTokenRepository;
 import io.conddo.core.repository.TenantCreditAccountRepository;
+import io.conddo.core.repository.TenantModuleOverrideRepository;
 import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.repository.TenantSiteRepository;
 import io.conddo.core.repository.UserRepository;
+import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantScoped;
+import io.conddo.core.domain.TenantModuleOverride;
+import io.conddo.core.registry.VerticalDataLoader;
+import io.conddo.core.registry.VerticalDefinition;
+import io.conddo.core.registry.VerticalToolMatrix;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,8 +36,13 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
@@ -63,6 +76,11 @@ public class AdminTenantService {
     private final TenantCreditAccountRepository creditAccountRepository;
     private final OrderRepository orderRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final TenantModuleOverrideRepository overrideRepository;
+    private final ProductRepository productRepository;
+    private final VerticalToolMatrix toolMatrix;
+    private final VerticalDataLoader verticals;
     private final PasswordHasher passwordHasher;
     private final NotificationService notificationService;
     private final CreditService creditService;
@@ -76,6 +94,11 @@ public class AdminTenantService {
                               TenantCreditAccountRepository creditAccountRepository,
                               OrderRepository orderRepository,
                               PasswordResetTokenRepository passwordResetTokenRepository,
+                              RefreshTokenRepository refreshTokenRepository,
+                              TenantModuleOverrideRepository overrideRepository,
+                              ProductRepository productRepository,
+                              VerticalToolMatrix toolMatrix,
+                              VerticalDataLoader verticals,
                               PasswordHasher passwordHasher,
                               NotificationService notificationService,
                               CreditService creditService,
@@ -88,11 +111,141 @@ public class AdminTenantService {
         this.creditAccountRepository = creditAccountRepository;
         this.orderRepository = orderRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.overrideRepository = overrideRepository;
+        this.productRepository = productRepository;
+        this.toolMatrix = toolMatrix;
+        this.verticals = verticals;
         this.passwordHasher = passwordHasher;
         this.notificationService = notificationService;
         this.creditService = creditService;
         this.appBaseUrl = appBaseUrl;
         this.clock = clock;
+    }
+
+    /** Known seed SKUs per vertical (mirrors {@code VerticalSignupSeeder}).
+     *  Used by {@link #purgeVerticalSeed(UUID)} to delete only the well-known
+     *  demo rows so real tenant data is never touched. */
+    private static final Map<String, Set<String>> SEED_SKUS = Map.of(
+            "pharmacy", Set.of("PCM-500-10", "AMX-500-21", "VITC-1000-30", "BPM-DIGITAL", "SAN-500"),
+            "music-studio", Set.of("ROOM-A", "ROOM-B", "ROOM-P"),
+            "music_studio", Set.of("ROOM-A", "ROOM-B", "ROOM-P")
+            // fashion seeds are customers + orders only — no products with fixed SKUs.
+    );
+
+    // ----- reset session / purge seed --------------------------------------
+
+    /**
+     * Force-logout every user of {@code tenantId} by deleting their refresh
+     * tokens. The tenant's next request rejects on JWT expiry (or immediately
+     * on refresh), which re-mints a fresh JWT against the current vertical /
+     * plan / overrides. Used after an admin changes a tenant's vertical.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public int resetSessions(UUID tenantId) {
+        int deleted = refreshTokenRepository.deleteAllForTenant(tenantId);
+        log.info("Admin reset {} refresh tokens for tenant {}", deleted, tenantId);
+        return deleted;
+    }
+
+    /**
+     * Delete rows in this tenant's tables that came from a vertical-signup
+     * seed run for a DIFFERENT vertical than the tenant now has. Currently
+     * covers products (the only rows with well-known deterministic SKUs).
+     *
+     * <p>Also clears {@code tenant_module_overrides} — those get stale when a
+     * vertical changes, and the resolver's opt-outs of the previous vertical
+     * shouldn't leak into the new one.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public PurgeResult purgeVerticalSeed(UUID tenantId) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        String currentVertical = tenant.getVerticalId() == null ? "" : tenant.getVerticalId().toLowerCase();
+
+        Set<String> skusToDelete = new LinkedHashSet<>();
+        for (Map.Entry<String, Set<String>> entry : SEED_SKUS.entrySet()) {
+            if (!entry.getKey().equals(currentVertical)) {
+                skusToDelete.addAll(entry.getValue());
+            }
+        }
+        int productsDeleted = skusToDelete.isEmpty() ? 0
+                : productRepository.deleteBySkuInCrossTenant(tenantId, skusToDelete);
+        int overridesCleared = overrideRepository.deleteByTenantIdCrossTenant(tenantId);
+        log.info("Admin purged {} seed products + {} module overrides from tenant {}",
+                productsDeleted, overridesCleared, tenantId);
+        return new PurgeResult(productsDeleted, overridesCleared);
+    }
+
+    // ----- modules (admin) -------------------------------------------------
+
+    /**
+     * List every known module with its state for the given tenant — same
+     * shape as {@code /tenant/modules} but callable cross-tenant by an
+     * admin. Powers the admin dashboard's per-tenant module toggles.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional(readOnly = true)
+    public List<AdminModuleRow> listModules(UUID tenantId) {
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        Set<String> defaults = new LinkedHashSet<>(
+                toolMatrix.resolve(tenant.getVerticalId(), tenant.getPlanId()));
+        Map<String, TenantModuleOverride> overrideMap = new LinkedHashMap<>();
+        for (TenantModuleOverride ovr : overrideRepository.findByTenantIdCrossTenant(tenantId)) {
+            overrideMap.put(ovr.getModuleId(), ovr);
+        }
+        Set<String> ids = new TreeSet<>();
+        for (VerticalDefinition def : verticals.all().values()) {
+            ids.addAll(def.starterTools());
+            ids.addAll(def.businessToolsAdd());
+            ids.addAll(def.proToolsAdd());
+        }
+        ids.addAll(overrideMap.keySet());
+
+        return ids.stream()
+                .map(id -> {
+                    TenantModuleOverride ovr = overrideMap.get(id);
+                    boolean inDefault = defaults.contains(id);
+                    boolean enabled = ovr == null ? inDefault : ovr.isEnabled();
+                    String source = ovr == null ? "vertical_default" : "tenant_choice";
+                    return new AdminModuleRow(id, enabled, inDefault, source);
+                })
+                .toList();
+    }
+
+    /**
+     * Enable or disable a module for the given tenant. Creates / updates the
+     * {@code tenant_module_overrides} row directly (bypasses ModuleResolver
+     * because that binds to TenantContext, and the admin's tenant context is
+     * their own SUPER_ADMIN row, not the target tenant).
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public AdminModuleRow setModule(UUID tenantId, String moduleId, boolean enabled) {
+        // Ensure the tenant exists — errors before we mutate anything.
+        tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
+                        "Tenant not found: " + tenantId));
+        TenantModuleOverride existing = overrideRepository.findByTenantIdCrossTenant(tenantId).stream()
+                .filter(o -> o.getModuleId().equals(moduleId))
+                .findFirst()
+                .orElse(null);
+        if (existing == null) {
+            overrideRepository.save(new TenantModuleOverride(tenantId, moduleId, enabled));
+        } else {
+            existing.setEnabled(enabled);
+            overrideRepository.save(existing);
+        }
+        log.info("Admin set module {} = {} for tenant {}", moduleId, enabled, tenantId);
+        return listModules(tenantId).stream()
+                .filter(r -> r.id().equals(moduleId))
+                .findFirst()
+                .orElse(new AdminModuleRow(moduleId, enabled, false, "tenant_choice"));
     }
 
     // ----- list ------------------------------------------------------------
@@ -369,6 +522,11 @@ public class AdminTenantService {
             TenantCreditAccount credits) {}
 
     public record InviteResult(Tenant tenant, String inviteUrl, boolean emailSent) {}
+
+    public record PurgeResult(int productsDeleted, int overridesCleared) {}
+
+    public record AdminModuleRow(String id, boolean enabled,
+                                  boolean inVerticalDefault, String source) {}
 
     /** Compact wire shape for the "Needs attention" panel. {@code reasons}
      *  are string codes rather than an enum so the FE can render new codes

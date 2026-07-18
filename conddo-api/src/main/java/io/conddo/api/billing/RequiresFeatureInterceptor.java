@@ -1,6 +1,8 @@
 package io.conddo.api.billing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.core.domain.SubscriptionPlan;
+import io.conddo.core.repository.SubscriptionPlanRepository;
 import io.conddo.core.service.BillingService;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantContextMissingException;
@@ -41,14 +43,18 @@ public class RequiresFeatureInterceptor implements HandlerInterceptor {
     private static final Logger log = LoggerFactory.getLogger(RequiresFeatureInterceptor.class);
 
     private final BillingService billingService;
+    private final SubscriptionPlanRepository planRepository;
     private final ObjectMapper objectMapper;
     private final String appBaseUrl;
     private final boolean enabled;
 
-    public RequiresFeatureInterceptor(BillingService billingService, ObjectMapper objectMapper,
+    public RequiresFeatureInterceptor(BillingService billingService,
+                                      SubscriptionPlanRepository planRepository,
+                                      ObjectMapper objectMapper,
                                       @Value("${conddo.app.base-url:https://app.conddo.io}") String appBaseUrl,
                                       @Value("${conddo.billing.enforce-feature-gates:true}") boolean enabled) {
         this.billingService = billingService;
+        this.planRepository = planRepository;
         this.objectMapper = objectMapper;
         this.appBaseUrl = appBaseUrl;
         this.enabled = enabled;
@@ -89,13 +95,24 @@ public class RequiresFeatureInterceptor implements HandlerInterceptor {
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
+        // Live price from subscription_plans (V67 seeds it in kobo) rather than
+        // the annotation's stale hardcoded default — Pricing v2 renumbered every
+        // tier and the annotation predates that change.
+        String planName = annotation.requiredPlan();
+        int priceNaira = planRepository.findByName(planName.toLowerCase())
+                .map(p -> p.getMonthlyPrice() == null ? annotation.requiredPlanPrice() : p.getMonthlyPrice() / 100)
+                .orElse(annotation.requiredPlanPrice());
+        String planDisplay = planRepository.findByName(planName.toLowerCase())
+                .map(io.conddo.core.domain.SubscriptionPlan::getDisplayName)
+                .orElse(planName);
+
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "PLAN_UPGRADE_REQUIRED");
-        body.put("message", annotation.requiredPlan() + " plan is required for "
+        body.put("message", planDisplay + " plan is required for "
                 + humanise(annotation.value()) + ".");
         body.put("upgrade_url", appBaseUrl + "/settings/billing");
-        body.put("requiredPlan", annotation.requiredPlan());
-        body.put("requiredPlanPrice", annotation.requiredPlanPrice());
+        body.put("requiredPlan", planDisplay);
+        body.put("requiredPlanPrice", priceNaira);
 
         objectMapper.writeValue(response.getWriter(), body);
         return false;
