@@ -423,6 +423,43 @@ public class AdminTenantService {
         return true;
     }
 
+    /**
+     * Admin-set password (support-console shortcut). When a tenant owner
+     * can't complete the email-based reset flow — expired link, no inbox
+     * access, spam filter — the admin generates a fresh password here,
+     * copies it from the response, and shares it out-of-band.
+     *
+     * <p>Also nukes every refresh token for the tenant so any live session
+     * is severed the moment the new password is issued — otherwise a bad
+     * actor with a stolen token stays logged in even after the password
+     * change.
+     */
+    @TenantScoped(crossTenant = true)
+    @Transactional
+    public String setOwnerPassword(UUID tenantId) {
+        User owner = userRepository.findOwnerByTenantIdCrossTenant(tenantId).orElseThrow(
+                () -> new io.conddo.core.common.NotFoundException(
+                        "No owner user found for tenant " + tenantId));
+        String rawPassword = generateReadablePassword();
+        owner.changePassword(passwordHasher.hash(rawPassword));
+        userRepository.save(owner);
+        int killed = refreshTokenRepository.deleteAllForTenant(tenantId);
+        log.info("Admin issued new password for tenant {} owner ({}), revoked {} sessions",
+                tenantId, owner.getEmail(), killed);
+        return rawPassword;
+    }
+
+    /** 14-char password with mixed case, digits, and no ambiguous glyphs
+     *  (0/O/1/l/I) — easier for the admin to read out loud on a phone call. */
+    private static String generateReadablePassword() {
+        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+        StringBuilder sb = new StringBuilder(14);
+        for (int i = 0; i < 14; i++) {
+            sb.append(alphabet.charAt(RANDOM.nextInt(alphabet.length())));
+        }
+        return sb.toString();
+    }
+
     // ----- deactivate ------------------------------------------------------
 
     /** Soft-deactivate the tenant. Data preserved; sign-in blocked on the

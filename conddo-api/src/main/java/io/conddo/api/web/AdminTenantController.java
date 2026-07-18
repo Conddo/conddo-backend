@@ -80,6 +80,17 @@ public class AdminTenantController {
         return ApiResponse.ok(new PasswordResetTriggeredResponse(sent));
     }
 
+    /** Admin-set password shortcut for support cases where the email flow
+     *  doesn't work. Returns a one-time plaintext password the admin copies
+     *  and shares out-of-band; the response is not re-fetchable. */
+    @PostMapping("/{id}/set-password")
+    public ApiResponse<SetPasswordResponse> setPassword(@PathVariable UUID id) {
+        String password = service.setOwnerPassword(id);
+        return ApiResponse.ok(new SetPasswordResponse(password));
+    }
+
+    public record SetPasswordResponse(String password) {}
+
     @PostMapping("/{id}/deactivate")
     public ApiResponse<TenantRow> deactivate(@PathVariable UUID id) {
         Tenant t = service.deactivate(id);
