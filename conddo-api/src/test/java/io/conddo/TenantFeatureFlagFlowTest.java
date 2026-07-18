@@ -124,8 +124,9 @@ class TenantFeatureFlagFlowTest {
                 .andReturn();
         JsonNode rows = objectMapper.readTree(res.getResponse().getContentAsString()).path("data");
         assertTrue(rows.isArray(), "expected array");
-        // Catalogue is currently 9 features (4 beta + 5 coming soon).
-        assertEquals(9, rows.size());
+        // Catalogue is currently 10 features (5 beta + 5 coming soon) — POS
+        // graduated from coming_soon to beta when the pharmacy POS shipped.
+        assertEquals(10, rows.size());
         // None should be enabled or carry interest for a brand-new tenant.
         for (JsonNode row : rows) {
             assertEquals(false, row.path("enabled").asBoolean(), "row not enabled: " + row);

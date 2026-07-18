@@ -104,6 +104,10 @@ class AuthFlowTest {
         registry.add("spring.flyway.placeholders.app_role", () -> APP_USER);
         registry.add("conddo.security.auth.cookie-secure", () -> "false");
         registry.add("conddo.security.cors.allowed-origins", () -> "https://app.conddo.io");
+        // Pin the legacy base-domain — the default flipped from conddo.io to
+        // getconddo.com in production, but these tests assert against the old
+        // hostname (web-co.conddo.io, X-Forwarded-Host: *.conddo.io etc.).
+        registry.add("conddo.base-domain", () -> "conddo.io");
         // Don't seed sample data in tests — existing assertions rely on
         // a tenant having zero customers / products immediately after signup.
         registry.add("conddo.signup.seed-sample-data", () -> "false");
@@ -1487,11 +1491,14 @@ class AuthFlowTest {
         JsonNode claims = decodeJwtClaims(token);
         // `plan` always present — normalisePlan(null) defaults to starter.
         assertEquals("starter", claims.path("plan").asText());
-        // `activeModules` always non-empty — DEFAULT_VERTICAL starter tier kicks in.
+        // `activeModules` always non-empty — DEFAULT_VERTICAL (`general`)
+        // starter tier kicks in. The general.yml preset was tightened to only
+        // the universally-safe tools (website/crm/payments/analytics); orders
+        // is no longer part of it and mustn't be re-asserted here.
         String modules = claims.path("activeModules").toString();
         assertTrue(modules.contains("\"website\""), "activeModules has website (default vertical): " + modules);
         assertTrue(modules.contains("\"crm\""), "activeModules has crm (default vertical): " + modules);
-        assertTrue(modules.contains("\"orders\""), "activeModules has orders (default vertical): " + modules);
+        assertTrue(modules.contains("\"payments\""), "activeModules has payments (default vertical): " + modules);
     }
 
     /**
