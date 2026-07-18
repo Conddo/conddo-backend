@@ -98,10 +98,11 @@ public class RequiresFeatureInterceptor implements HandlerInterceptor {
         // Live price from subscription_plans (V67 seeds it in kobo) rather than
         // the annotation's stale hardcoded default — Pricing v2 renumbered every
         // tier and the annotation predates that change.
-        String planName = annotation.requiredPlan();
+        final RequiresFeature ann = annotation; // effectively-final capture for the lambdas
+        String planName = ann.requiredPlan();
         int priceNaira = planRepository.findByName(planName.toLowerCase())
-                .map(p -> p.getMonthlyPrice() == null ? annotation.requiredPlanPrice() : p.getMonthlyPrice() / 100)
-                .orElse(annotation.requiredPlanPrice());
+                .map(p -> p.getMonthlyPrice() == null ? ann.requiredPlanPrice() : p.getMonthlyPrice() / 100)
+                .orElse(ann.requiredPlanPrice());
         String planDisplay = planRepository.findByName(planName.toLowerCase())
                 .map(io.conddo.core.domain.SubscriptionPlan::getDisplayName)
                 .orElse(planName);
