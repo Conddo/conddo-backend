@@ -13,7 +13,10 @@ public record PublicBookingRequest(
         @NotBlank String customerName,
         String customerPhone,
         @Email String customerEmail,
+        /** Free-text fallback when the tenant hasn't defined services yet. */
         String service,
+        /** Picked bookable service id — wins over the free-text field when set. */
+        java.util.UUID serviceId,
         @NotNull OffsetDateTime start
 ) {
 }

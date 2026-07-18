@@ -43,6 +43,19 @@ public class PublicBookingController {
         return ApiResponse.ok(publicBookingService.availability(slug));
     }
 
+    /** Open slots for the next {@code days} days. When {@code serviceId} is
+     *  set, the slot length matches that service's duration; otherwise the
+     *  tenant's default. Cap: 30 days. */
+    @GetMapping("/{slug}/slots")
+    public ApiResponse<java.util.List<java.time.OffsetDateTime>> slots(
+            @PathVariable String slug,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) java.util.UUID serviceId,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "14") int days,
+            HttpServletRequest request) {
+        rateLimit(request, "book-slots");
+        return ApiResponse.ok(publicBookingService.slots(slug, serviceId, days));
+    }
+
     @PostMapping("/{slug}")
     public ResponseEntity<ApiResponse<PublicBookingResponse>> book(
             @PathVariable String slug, @Valid @RequestBody PublicBookingRequest request,
@@ -50,7 +63,7 @@ public class PublicBookingController {
         rateLimit(httpRequest, "book-post");
         PublicBookingResponse body = PublicBookingResponse.from(publicBookingService.book(
                 slug, request.customerName(), request.customerPhone(), request.customerEmail(),
-                request.service(), request.start()));
+                request.service(), request.serviceId(), request.start()));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
     }
 
