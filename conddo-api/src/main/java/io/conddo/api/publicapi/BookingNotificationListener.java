@@ -97,6 +97,20 @@ public class BookingNotificationListener {
                     tenant.getContactPhone());
             notificationService.sendBookingAlert(email, phone, tenant.getName(),
                     event.customerName(), event.service(), whenStr, event.contactPhone());
+
+            // Customer confirmation — only when they gave us an email address.
+            // Best-effort; a delivery failure never surfaces to the customer
+            // because the booking is already committed on our side.
+            if (event.contactEmail() != null && !event.contactEmail().isBlank()) {
+                notificationService.sendBookingConfirmation(
+                        event.contactEmail(),
+                        event.customerName(),
+                        tenant.getName(),
+                        event.service(),
+                        whenStr,
+                        tenant.getContactPhone(),
+                        tenant.getContactEmail());
+            }
         } catch (RuntimeException ex) {
             log.error("Booking notification failed for tenant {} booking {}: {}",
                     event.tenantId(), event.bookingId(), ex.getMessage());

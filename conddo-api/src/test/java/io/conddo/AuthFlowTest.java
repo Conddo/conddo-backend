@@ -799,7 +799,7 @@ class AuthFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.slug").value("book-a"))
                 .andExpect(jsonPath("$.data.enabled").value(true))
-                .andExpect(jsonPath("$.data.url").value("conddo.io/book/book-a"));
+                .andExpect(jsonPath("$.data.url").value("https://book-a.conddo.io/book/book-a"));
         MvcResult regen = mockMvc.perform(post("/api/v1/bookings/link").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
                 .andReturn();

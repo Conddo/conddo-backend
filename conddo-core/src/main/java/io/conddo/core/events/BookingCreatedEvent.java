@@ -17,6 +17,7 @@ public record BookingCreatedEvent(
         String service,
         OffsetDateTime startsAt,
         String contactPhone,
+        String contactEmail,
         Source source) implements DomainEvent {
 
     public enum Source {

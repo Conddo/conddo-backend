@@ -338,6 +338,42 @@ public class NotificationService {
         return value == null ? "" : value;
     }
 
+    /**
+     * Customer-facing booking confirmation. Fires on public self-book when
+     * the customer supplied an email address. Kept brand-neutral (Conddo
+     * chrome only, not the tenant's) — the tenant's own site renderer
+     * carries their brand, but this is a transactional receipt whose
+     * primary job is legibility and trust.
+     */
+    public void sendBookingConfirmation(String toEmail, String customerName,
+                                         String businessName, String service,
+                                         String whenStr, String tenantPhone,
+                                         String tenantEmail) {
+        String subject = "Booking confirmed — " + safe(businessName);
+        String text = "Hi " + safe(customerName) + ",\n\n"
+                + "Your booking with " + safe(businessName) + " is confirmed.\n\n"
+                + "  Service: " + safe(service) + "\n"
+                + "  When:    " + safe(whenStr) + "\n\n"
+                + "Need to reach " + safe(businessName) + "?\n"
+                + (tenantPhone == null || tenantPhone.isBlank() ? ""
+                        : "  Phone: " + tenantPhone + "\n")
+                + (tenantEmail == null || tenantEmail.isBlank() ? ""
+                        : "  Email: " + tenantEmail + "\n")
+                + "\nThanks for using Conddo.";
+        String html = templates.render("booking-confirmation.html", Map.of(
+                "CUSTOMER_NAME", safe(customerName),
+                "BUSINESS_NAME", safe(businessName),
+                "SERVICE",       safe(service),
+                "WHEN_STR",      safe(whenStr),
+                "TENANT_PHONE",  safe(tenantPhone),
+                "TENANT_EMAIL",  safe(tenantEmail)));
+        if (html.isBlank()) {
+            emailSender.send(toEmail, subject, text);
+        } else {
+            emailSender.sendHtml(toEmail, subject, html, text);
+        }
+    }
+
     /** Password reset — delivers the reset token (and a reset link) by email. */
     public void sendPasswordReset(String toEmail, String resetToken) {
         String subject = "Reset your Conddo password";

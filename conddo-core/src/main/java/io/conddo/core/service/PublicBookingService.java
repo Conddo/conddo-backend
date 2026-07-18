@@ -58,26 +58,42 @@ public class PublicBookingService {
                 .stream().map(b -> new Slot(b.getStartsAt(), b.getEndsAt())).toList();
         Map<String, Object> hours = tenant.getWorkingHours() != null
                 ? tenant.getWorkingHours() : BookingService.defaultWorkingHours();
-        return new PublicAvailability(tenant.getName(), hours,
-                tenant.getSlotDurationMinutes(), tenant.getBufferMinutes(), booked);
+        return new PublicAvailability(
+                tenant.getName(),
+                tenant.getSlug(),
+                tenant.getLogoUrl(),
+                tenant.getPrimaryColor(),
+                tenant.getSecondaryColor(),
+                hours,
+                tenant.getSlotDurationMinutes(),
+                tenant.getBufferMinutes(),
+                booked);
     }
 
     /** Creates a pending booking from the public page; the owner confirms later. */
     @Transactional
-    public Booking book(String slug, String customerName, String phone, String service, OffsetDateTime start) {
+    public Booking book(String slug, String customerName, String phone, String email,
+                        String service, OffsetDateTime start) {
         Tenant tenant = resolve(slug);
         TenantContext.set(tenant.getId());
         tenantSession.bind();
         OffsetDateTime end = start.plusMinutes(tenant.getSlotDurationMinutes());
         Booking booking = new Booking(tenant.getId(), null, customerName, service, start, end, "in_person", "pending");
-        booking.setNotes(phone == null || phone.isBlank()
-                ? "Self-booked via link" : "Self-booked via link. Contact: " + phone);
+        StringBuilder note = new StringBuilder("Self-booked via link.");
+        if (phone != null && !phone.isBlank()) {
+            note.append(" Phone: ").append(phone).append('.');
+        }
+        if (email != null && !email.isBlank()) {
+            note.append(" Email: ").append(email).append('.');
+        }
+        booking.setNotes(note.toString());
         booking = bookingRepository.save(booking);
 
-        // Fan-out to bell-feed + email + SMS via the BookingNotificationListener
-        // (Pharmacy v2 follow-up — booking parity with the order notify flow).
+        // Fan-out to bell-feed + owner alert + customer confirmation via the
+        // BookingNotificationListener. Owner is handled by the existing
+        // listener; customer confirmation fires only when email is present.
         events.publish(new BookingCreatedEvent(
-                tenant.getId(), booking.getId(), customerName, service, start, phone,
+                tenant.getId(), booking.getId(), customerName, service, start, phone, email,
                 BookingCreatedEvent.Source.PUBLIC_WEBSITE));
         return booking;
     }
@@ -96,8 +112,18 @@ public class PublicBookingService {
     public record Slot(OffsetDateTime start, OffsetDateTime end) {
     }
 
-    /** Public availability: business name, hours, slot/buffer, and booked slots. */
-    public record PublicAvailability(String business, Map<String, Object> workingHours,
-                                     int slotDurationMinutes, int bufferMinutes, List<Slot> booked) {
+    /** Public availability + tenant brand so the customer sees a page that
+     *  looks like the tenant's site, not generic Conddo chrome. {@code slug}
+     *  is the tenant's own slug (distinct from the booking link slug) —
+     *  the FE uses it to build canonical URLs and analytics keys. */
+    public record PublicAvailability(String business,
+                                     String slug,
+                                     String logoUrl,
+                                     String primaryColor,
+                                     String secondaryColor,
+                                     Map<String, Object> workingHours,
+                                     int slotDurationMinutes,
+                                     int bufferMinutes,
+                                     List<Slot> booked) {
     }
 }

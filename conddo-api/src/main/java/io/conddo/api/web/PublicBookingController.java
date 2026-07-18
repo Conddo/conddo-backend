@@ -49,7 +49,8 @@ public class PublicBookingController {
             HttpServletRequest httpRequest) {
         rateLimit(httpRequest, "book-post");
         PublicBookingResponse body = PublicBookingResponse.from(publicBookingService.book(
-                slug, request.customerName(), request.customerPhone(), request.service(), request.start()));
+                slug, request.customerName(), request.customerPhone(), request.customerEmail(),
+                request.service(), request.start()));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
     }
 

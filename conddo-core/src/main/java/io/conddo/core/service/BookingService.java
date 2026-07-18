@@ -264,7 +264,7 @@ public class BookingService {
     public Link link() {
         tenantSession.bind();
         Tenant tenant = requireTenant();
-        return new Link(tenant.effectiveBookingSlug(), tenant.isBookingLinkEnabled());
+        return new Link(tenant.effectiveBookingSlug(), tenant.isBookingLinkEnabled(), tenant.getSlug());
     }
 
     /** Regenerates the self-book slug (derived from the tenant slug + a random suffix). */
@@ -276,7 +276,7 @@ public class BookingService {
         tenant.setBookingLinkSlug(tenant.getSlug() + "-" + suffix);
         tenant.setBookingLinkEnabled(true);
         tenantRepository.save(tenant);
-        return new Link(tenant.effectiveBookingSlug(), tenant.isBookingLinkEnabled());
+        return new Link(tenant.effectiveBookingSlug(), tenant.isBookingLinkEnabled(), tenant.getSlug());
     }
 
     @Transactional(readOnly = true)
@@ -329,8 +329,9 @@ public class BookingService {
     public record Availability(Map<String, Object> workingHours, int slotDurationMinutes, int bufferMinutes) {
     }
 
-    /** The shareable self-book link's slug and on/off state. */
-    public record Link(String slug, boolean enabled) {
+    /** The shareable self-book link's slug + on/off state + the tenant's own
+     *  slug (needed to build the customer-facing URL as a subdomain). */
+    public record Link(String slug, boolean enabled, String tenantSlug) {
     }
 
     /** Weekly performance: confirmed bookings this week and projected revenue. */

@@ -39,17 +39,18 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/bookings")
-@io.conddo.api.billing.RequiresFeature(value = "bookings",
-        requiredPlan = "Growth", requiredPlanPrice = 45000)
+@io.conddo.api.billing.RequiresFeature(value = "bookings", requiredPlan = "growth")
 public class BookingController {
 
     private static final String READ = "@staffAccess.canRead('orders')";
     private static final String WRITE = "@staffAccess.canWrite('orders')";
 
     private final BookingService bookingService;
+    private final LinkResponse.Builder linkBuilder;
 
-    public BookingController(BookingService bookingService) {
+    public BookingController(BookingService bookingService, LinkResponse.Builder linkBuilder) {
         this.bookingService = bookingService;
+        this.linkBuilder = linkBuilder;
     }
 
     @GetMapping
@@ -113,13 +114,13 @@ public class BookingController {
     @GetMapping("/link")
     @PreAuthorize(READ)
     public ApiResponse<LinkResponse> link() {
-        return ApiResponse.ok(LinkResponse.from(bookingService.link()));
+        return ApiResponse.ok(linkBuilder.from(bookingService.link()));
     }
 
     @PostMapping("/link")
     @PreAuthorize(WRITE)
     public ApiResponse<LinkResponse> regenerateLink() {
-        return ApiResponse.ok(LinkResponse.from(bookingService.regenerateLink()));
+        return ApiResponse.ok(linkBuilder.from(bookingService.regenerateLink()));
     }
 
     @GetMapping("/performance")
