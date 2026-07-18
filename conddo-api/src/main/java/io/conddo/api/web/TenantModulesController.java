@@ -83,7 +83,7 @@ public class TenantModulesController {
                 .filter(s -> s.id().equals(moduleId))
                 .findFirst()
                 .map(TenantModulesController::toRow)
-                .orElseGet(() -> new ModuleRow(moduleId, true, false, "tenant_choice"));
+                .orElseGet(() -> new ModuleRow(moduleId, true, false, true, "tenant_choice"));
     }
 
     private static ModuleRow toRow(ModuleState state) {
