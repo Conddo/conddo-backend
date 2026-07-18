@@ -207,13 +207,21 @@ public class AdminTenantService {
         }
         ids.addAll(overrideMap.keySet());
 
+        // Same plan-ceiling filter the resolver enforces at read time —
+        // above-plan overrides show as toggled-on-but-inert without this,
+        // which confuses the admin. `inPlan=false` renders the row locked
+        // with an "Upgrade required" hint.
+        Set<String> planCeiling = defaults;
         return ids.stream()
                 .map(id -> {
                     TenantModuleOverride ovr = overrideMap.get(id);
                     boolean inDefault = defaults.contains(id);
-                    boolean enabled = ovr == null ? inDefault : ovr.isEnabled();
+                    boolean inPlan = planCeiling.contains(id);
+                    boolean enabled = ovr == null
+                            ? inDefault
+                            : (ovr.isEnabled() && inPlan);
                     String source = ovr == null ? "vertical_default" : "tenant_choice";
-                    return new AdminModuleRow(id, enabled, inDefault, source);
+                    return new AdminModuleRow(id, enabled, inDefault, inPlan, source);
                 })
                 .toList();
     }
@@ -228,9 +236,20 @@ public class AdminTenantService {
     @Transactional
     public AdminModuleRow setModule(UUID tenantId, String moduleId, boolean enabled) {
         // Ensure the tenant exists — errors before we mutate anything.
-        tenantRepository.findById(tenantId)
+        Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new io.conddo.core.common.NotFoundException(
                         "Tenant not found: " + tenantId));
+        // Enabling: refuse above-plan modules — same rule as the tenant-side
+        // resolver, applied to the admin surface too. Disabling is always
+        // fine (admins might turn off a starter default that leaks).
+        if (enabled) {
+            Set<String> planCeiling = new LinkedHashSet<>(
+                    toolMatrix.resolve(tenant.getVerticalId(), tenant.getPlanId()));
+            if (!planCeiling.contains(moduleId)) {
+                throw new io.conddo.core.service.ModuleResolver.ModuleAboveTenantPlanException(
+                        moduleId, tenant.getPlanId());
+            }
+        }
         TenantModuleOverride existing = overrideRepository.findByTenantIdCrossTenant(tenantId).stream()
                 .filter(o -> o.getModuleId().equals(moduleId))
                 .findFirst()
@@ -245,7 +264,7 @@ public class AdminTenantService {
         return listModules(tenantId).stream()
                 .filter(r -> r.id().equals(moduleId))
                 .findFirst()
-                .orElse(new AdminModuleRow(moduleId, enabled, false, "tenant_choice"));
+                .orElse(new AdminModuleRow(moduleId, enabled, false, true, "tenant_choice"));
     }
 
     // ----- list ------------------------------------------------------------
@@ -563,7 +582,8 @@ public class AdminTenantService {
     public record PurgeResult(int productsDeleted, int overridesCleared) {}
 
     public record AdminModuleRow(String id, boolean enabled,
-                                  boolean inVerticalDefault, String source) {}
+                                  boolean inVerticalDefault, boolean inPlan,
+                                  String source) {}
 
     /** Compact wire shape for the "Needs attention" panel. {@code reasons}
      *  are string codes rather than an enum so the FE can render new codes

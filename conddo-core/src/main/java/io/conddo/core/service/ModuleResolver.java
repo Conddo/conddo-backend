@@ -50,14 +50,24 @@ public class ModuleResolver {
      * Final module set for the bound tenant. {@code resolve} requires
      * an already-bound tenant context so the override lookup is
      * RLS-scoped.
+     *
+     * <p><b>Plan is a hard ceiling.</b> Even an opt-in override cannot
+     * elevate a tenant onto an above-plan module — the override row is
+     * intersected with {@code toolMatrix.resolve(vertical, plan)}, so
+     * stale rows from a previous plan tier stay dormant until an upgrade.
      */
     @Transactional(readOnly = true)
     public List<String> resolve(String vertical, String plan) {
         tenantSession.bind();
-        Set<String> result = new LinkedHashSet<>(toolMatrix.resolve(vertical, plan));
+        Set<String> planCeiling = new LinkedHashSet<>(toolMatrix.resolve(vertical, plan));
+        Set<String> result = new LinkedHashSet<>(planCeiling);
         for (TenantModuleOverride ovr : overrides.findAll()) {
             if (ovr.isEnabled()) {
-                result.add(ovr.getModuleId());
+                // Above-plan opt-ins never take effect — a Starter tenant
+                // cannot self-enable a Growth-only tool via an override.
+                if (planCeiling.contains(ovr.getModuleId())) {
+                    result.add(ovr.getModuleId());
+                }
             } else {
                 result.remove(ovr.getModuleId());
             }
@@ -85,17 +95,43 @@ public class ModuleResolver {
         }
         ids.addAll(overrideMap.keySet());
 
+        // `inPlan` = would resolve() pick this module up on the current plan.
+        // Rows outside the plan ceiling render as locked in the picker — a
+        // user on Starter sees the Growth-only tool with a "Plan required"
+        // hint instead of a broken toggle that silently no-ops.
+        Set<String> planCeiling = defaults; // toolMatrix.resolve is cumulative-to-plan
         return ids.stream()
                 .map(id -> {
                     TenantModuleOverride ovr = overrideMap.get(id);
                     boolean inDefault = defaults.contains(id);
-                    boolean enabled = ovr == null ? inDefault : ovr.isEnabled();
+                    boolean effectiveEnabled = ovr == null
+                            ? inDefault
+                            : (ovr.isEnabled() && planCeiling.contains(id));
+                    boolean inPlan = planCeiling.contains(id);
                     String source = ovr == null ? "vertical_default" : "tenant_choice";
-                    return new ModuleState(id, enabled, inDefault, source);
+                    return new ModuleState(id, effectiveEnabled, inDefault, inPlan, source);
                 })
                 .toList();
     }
 
+    /**
+     * Toggle a module for the bound tenant. Enabling a module the tenant's
+     * plan doesn't cover is refused with {@link ModuleAboveTenantPlanException}
+     * so the FE can surface a "Plan required" message and offer an upgrade
+     * link. Disabling stays permitted at every tier — the tenant might turn
+     * off a starter default they don't want cluttering their sidebar.
+     */
+    @Transactional
+    public TenantModuleOverride setEnabled(String moduleId, boolean enabled,
+                                            String vertical, String plan) {
+        if (enabled && !toolMatrix.resolve(vertical, plan).contains(moduleId)) {
+            throw new ModuleAboveTenantPlanException(moduleId, plan);
+        }
+        return setEnabled(moduleId, enabled);
+    }
+
+    /** Legacy signature — kept so pre-existing callers compile while we
+     *  migrate them. New code should call the plan-aware overload. */
     @Transactional
     public TenantModuleOverride setEnabled(String moduleId, boolean enabled) {
         tenantSession.bind();
@@ -107,6 +143,21 @@ public class ModuleResolver {
         return overrides.save(existing);
     }
 
-    public record ModuleState(String id, boolean enabled, boolean inVerticalDefault, String source) {
+    public record ModuleState(String id, boolean enabled, boolean inVerticalDefault,
+                              boolean inPlan, String source) {
+    }
+
+    /** Thrown when a caller tries to enable a module their plan doesn't cover.
+     *  Mapped to 402 PLAN_UPGRADE_REQUIRED in the web layer. */
+    public static class ModuleAboveTenantPlanException extends RuntimeException {
+        private final String moduleId;
+        private final String plan;
+        public ModuleAboveTenantPlanException(String moduleId, String plan) {
+            super("Module '" + moduleId + "' is above the '" + plan + "' plan tier.");
+            this.moduleId = moduleId;
+            this.plan = plan;
+        }
+        public String getModuleId() { return moduleId; }
+        public String getPlan() { return plan; }
     }
 }

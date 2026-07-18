@@ -59,7 +59,8 @@ public class TenantModulesController {
 
     @PostMapping("/{moduleId}/enable")
     public ResponseEntity<ApiResponse<ModuleRow>> enable(@PathVariable String moduleId) {
-        resolver.setEnabled(moduleId, true);
+        Tenant tenant = currentTenant();
+        resolver.setEnabled(moduleId, true, tenant.getVerticalId(), tenant.getPlanId());
         return ResponseEntity.ok(ApiResponse.ok(stateRow(moduleId)));
     }
 
@@ -87,14 +88,14 @@ public class TenantModulesController {
 
     private static ModuleRow toRow(ModuleState state) {
         return new ModuleRow(state.id(), state.enabled(),
-                state.inVerticalDefault(), state.source());
+                state.inVerticalDefault(), state.inPlan(), state.source());
     }
 
     /**
-     * API contract for a single module row. Typed record instead of the
-     * previous {@code Map<String,Object>} — Jackson serialises the fields in
-     * declaration order, the FE gets a strong type, and OpenAPI generators
-     * can now emit a schema.
+     * API contract for a single module row. {@code inPlan} lets the picker
+     * grey out and lock rows the tenant's plan doesn't cover so the toggle
+     * isn't a silent no-op.
      */
-    public record ModuleRow(String id, boolean enabled, boolean inVerticalDefault, String source) {}
+    public record ModuleRow(String id, boolean enabled, boolean inVerticalDefault,
+                             boolean inPlan, String source) {}
 }

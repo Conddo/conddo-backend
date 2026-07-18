@@ -83,6 +83,18 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("NOT_FOUND", ex.getMessage())));
     }
 
+    /** Enabling a module the tenant's plan doesn't cover — same wire shape
+     *  as {@code RequiresFeatureInterceptor} so the FE can reuse its
+     *  {@code PLAN_UPGRADE_REQUIRED} handler. HTTP 402 (Payment Required)
+     *  is the semantically-correct code but too many client libraries treat
+     *  it as an error class; we return 403 for FE compatibility. */
+    @ExceptionHandler(io.conddo.core.service.ModuleResolver.ModuleAboveTenantPlanException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAboveTenantPlan(
+            io.conddo.core.service.ModuleResolver.ModuleAboveTenantPlanException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.fail(ApiError.of("PLAN_UPGRADE_REQUIRED", ex.getMessage())));
+    }
+
     /** Student tier requires an academic email suffix. The FE renders a
      *  specific inline hint on this code — don't collapse it into a
      *  generic 400 or the user has to guess. */
