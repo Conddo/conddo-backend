@@ -211,8 +211,10 @@ public class PublicBookingService {
         Object raw = hours.get(key);
         if (!(raw instanceof Map<?, ?> m)) return null;
         boolean open = Boolean.TRUE.equals(m.get("open"));
-        String s = String.valueOf(m.getOrDefault("start", "09:00"));
-        String e = String.valueOf(m.getOrDefault("end", "17:00"));
+        Object startRaw = m.get("start");
+        Object endRaw = m.get("end");
+        String s = startRaw == null ? "09:00" : String.valueOf(startRaw);
+        String e = endRaw == null ? "17:00" : String.valueOf(endRaw);
         try {
             return new DayHours(open, LocalTime.parse(s), LocalTime.parse(e));
         } catch (RuntimeException ex) {
