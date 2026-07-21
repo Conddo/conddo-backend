@@ -374,6 +374,91 @@ public class NotificationService {
         }
     }
 
+    /**
+     * Send an invoice link to the customer. The email is intentionally
+     * short — one CTA button that opens the branded public page
+     * ({@code /i/{token}}) where the full document lives. Anything richer
+     * (line-item breakdown, PDF attachment) would duplicate what the
+     * link already shows and bloat the message size.
+     */
+    public void sendInvoiceEmail(String toEmail, String customerName,
+                                  String businessName, String invoiceNumber,
+                                  String totalDisplay, String dueDateDisplay,
+                                  String publicUrl, String notes,
+                                  String tenantPhone, String tenantEmail) {
+        String subject = "Invoice " + safe(invoiceNumber) + " — " + safe(businessName);
+        String text = "Hi " + safe(customerName) + ",\n\n"
+                + safe(businessName) + " sent you invoice " + safe(invoiceNumber) + ".\n\n"
+                + "  Amount:   " + safe(totalDisplay) + "\n"
+                + (dueDateDisplay == null || dueDateDisplay.isBlank() ? ""
+                        : "  Due:      " + dueDateDisplay + "\n")
+                + "\nView + pay online: " + publicUrl + "\n"
+                + (notes == null || notes.isBlank() ? "" : "\n" + notes + "\n")
+                + "\nNeed to reach " + safe(businessName) + "?\n"
+                + (tenantPhone == null || tenantPhone.isBlank() ? ""
+                        : "  Phone: " + tenantPhone + "\n")
+                + (tenantEmail == null || tenantEmail.isBlank() ? ""
+                        : "  Email: " + tenantEmail + "\n")
+                + "\nSent via Conddo.";
+        String html = templates.render("invoice-share.html", Map.of(
+                "CUSTOMER_NAME",  safe(customerName),
+                "BUSINESS_NAME",  safe(businessName),
+                "INVOICE_NUMBER", safe(invoiceNumber),
+                "TOTAL_DISPLAY",  safe(totalDisplay),
+                "DUE_DATE",       safe(dueDateDisplay),
+                "PUBLIC_URL",     safe(publicUrl),
+                "NOTES",          safe(notes),
+                "TENANT_PHONE",   safe(tenantPhone),
+                "TENANT_EMAIL",   safe(tenantEmail)));
+        if (html.isBlank()) {
+            emailSender.send(toEmail, subject, text);
+        } else {
+            emailSender.sendHtml(toEmail, subject, html, text);
+        }
+    }
+
+    /**
+     * Receipt email — fires automatically when an invoice flips to
+     * {@code paid} (manual mark or gateway webhook). Different template
+     * + green PAID stamp instead of the invoice's amber pending block.
+     */
+    public void sendInvoiceReceiptEmail(String toEmail, String customerName,
+                                         String businessName, String invoiceNumber,
+                                         String totalDisplay, String paidDateDisplay,
+                                         String paidMethod, String publicUrl,
+                                         String tenantPhone, String tenantEmail) {
+        String subject = "Receipt " + safe(invoiceNumber) + " — " + safe(businessName);
+        String text = "Hi " + safe(customerName) + ",\n\n"
+                + "Thanks — we received your payment of " + safe(totalDisplay)
+                + " for invoice " + safe(invoiceNumber) + ".\n\n"
+                + "  Paid on: " + safe(paidDateDisplay) + "\n"
+                + (paidMethod == null || paidMethod.isBlank() ? ""
+                        : "  Method:  " + paidMethod + "\n")
+                + "\nYour receipt is at: " + publicUrl + "\n"
+                + "\nNeed a copy for your records? Open the link above and Print → Save as PDF.\n"
+                + "\nNeed to reach " + safe(businessName) + "?\n"
+                + (tenantPhone == null || tenantPhone.isBlank() ? ""
+                        : "  Phone: " + tenantPhone + "\n")
+                + (tenantEmail == null || tenantEmail.isBlank() ? ""
+                        : "  Email: " + tenantEmail + "\n")
+                + "\nSent via Conddo.";
+        String html = templates.render("invoice-receipt.html", Map.of(
+                "CUSTOMER_NAME",  safe(customerName),
+                "BUSINESS_NAME",  safe(businessName),
+                "INVOICE_NUMBER", safe(invoiceNumber),
+                "TOTAL_DISPLAY",  safe(totalDisplay),
+                "PAID_DATE",      safe(paidDateDisplay),
+                "PAID_METHOD",    safe(paidMethod),
+                "PUBLIC_URL",     safe(publicUrl),
+                "TENANT_PHONE",   safe(tenantPhone),
+                "TENANT_EMAIL",   safe(tenantEmail)));
+        if (html.isBlank()) {
+            emailSender.send(toEmail, subject, text);
+        } else {
+            emailSender.sendHtml(toEmail, subject, html, text);
+        }
+    }
+
     /** Password reset — delivers the reset token (and a reset link) by email. */
     public void sendPasswordReset(String toEmail, String resetToken) {
         String subject = "Reset your Conddo password";

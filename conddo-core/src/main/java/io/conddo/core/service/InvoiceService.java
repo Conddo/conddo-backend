@@ -3,12 +3,18 @@ package io.conddo.core.service;
 import io.conddo.core.common.NotFoundException;
 import io.conddo.core.domain.Invoice;
 import io.conddo.core.domain.InvoiceLine;
+import io.conddo.core.domain.Tenant;
+import io.conddo.core.notify.NotificationService;
 import io.conddo.core.repository.InvoiceLineRepository;
 import io.conddo.core.repository.InvoiceRepository;
+import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantSession;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +22,7 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
@@ -34,21 +41,40 @@ import java.util.UUID;
 @Service
 public class InvoiceService {
 
+    private static final Logger log = LoggerFactory.getLogger(InvoiceService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final DateTimeFormatter HUMAN_DATE =
+            DateTimeFormatter.ofPattern("d MMM yyyy");
 
     private final InvoiceRepository invoiceRepo;
     private final InvoiceLineRepository lineRepo;
+    private final TenantRepository tenantRepo;
+    private final NotificationService notificationService;
     private final TenantSession tenantSession;
+    private final String appBaseUrl;
 
     @PersistenceContext
     private EntityManager em;
 
     public InvoiceService(InvoiceRepository invoiceRepo,
                           InvoiceLineRepository lineRepo,
-                          TenantSession tenantSession) {
+                          TenantRepository tenantRepo,
+                          NotificationService notificationService,
+                          TenantSession tenantSession,
+                          @Value("${conddo.app.base-url:https://app.getconddo.com}") String appBaseUrl) {
         this.invoiceRepo = invoiceRepo;
         this.lineRepo = lineRepo;
+        this.tenantRepo = tenantRepo;
+        this.notificationService = notificationService;
         this.tenantSession = tenantSession;
+        this.appBaseUrl = trimTrailingSlash(appBaseUrl);
+    }
+
+    private static String trimTrailingSlash(String v) {
+        if (v == null) return "";
+        String s = v.trim();
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+        return s;
     }
 
     // ----- list + get ------------------------------------------------------
@@ -184,13 +210,91 @@ public class InvoiceService {
         return invoiceRepo.save(invoice);
     }
 
-    /** Manual mark-paid — cash / transfer / other. */
+    /**
+     * Manual mark-paid — cash / transfer / other. Auto-fires a receipt
+     * email to the customer when we have an email on file. Delivery
+     * failures are logged but never bubbled — the payment is real,
+     * the email is best-effort.
+     */
     @Transactional
     public Invoice markPaidManually(UUID id, String method) {
         tenantSession.bind();
         Invoice invoice = require(id);
         invoice.markPaidManually(method, OffsetDateTime.now());
+        invoice = invoiceRepo.save(invoice);
+        maybeSendReceiptEmail(invoice);
+        return invoice;
+    }
+
+    /**
+     * Send the invoice link to the customer's email. Also flips draft →
+     * sent so the tenant's dashboard reflects that the customer has it.
+     * Idempotent for already-sent invoices — you can re-send the email
+     * without changing status.
+     */
+    @Transactional
+    public Invoice sendInvoiceToCustomer(UUID id) {
+        tenantSession.bind();
+        Invoice invoice = require(id);
+        if (invoice.getCustomerEmail() == null || invoice.getCustomerEmail().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Customer email is required to send this invoice. Add it in Edit and try again.");
+        }
+        Tenant tenant = tenantRepo.findById(invoice.getTenantId())
+                .orElseThrow(() -> new NotFoundException("Tenant not found"));
+        try {
+            notificationService.sendInvoiceEmail(
+                    invoice.getCustomerEmail(),
+                    invoice.getCustomerName(),
+                    tenant.getName(),
+                    invoice.getInvoiceNumber(),
+                    formatNaira(invoice.getTotalKobo()),
+                    invoice.getDueDate() == null ? "" : HUMAN_DATE.format(invoice.getDueDate()),
+                    publicUrlFor(invoice),
+                    invoice.getNotes(),
+                    tenant.getContactPhone(),
+                    tenant.getContactEmail());
+        } catch (RuntimeException ex) {
+            log.error("Invoice email send failed for {}: {}",
+                    invoice.getInvoiceNumber(), ex.getMessage());
+        }
+        invoice.markSent();
         return invoiceRepo.save(invoice);
+    }
+
+    private void maybeSendReceiptEmail(Invoice invoice) {
+        if (invoice.getCustomerEmail() == null || invoice.getCustomerEmail().isBlank()) {
+            return;
+        }
+        Tenant tenant = tenantRepo.findById(invoice.getTenantId()).orElse(null);
+        if (tenant == null) return;
+        try {
+            notificationService.sendInvoiceReceiptEmail(
+                    invoice.getCustomerEmail(),
+                    invoice.getCustomerName(),
+                    tenant.getName(),
+                    invoice.getInvoiceNumber(),
+                    formatNaira(invoice.getTotalKobo()),
+                    invoice.getPaidAt() == null ? "" : HUMAN_DATE.format(invoice.getPaidAt().toLocalDate()),
+                    invoice.getPaidMethod() == null ? "" : invoice.getPaidMethod(),
+                    publicUrlFor(invoice),
+                    tenant.getContactPhone(),
+                    tenant.getContactEmail());
+        } catch (RuntimeException ex) {
+            log.error("Receipt email send failed for {}: {}",
+                    invoice.getInvoiceNumber(), ex.getMessage());
+        }
+    }
+
+    private String publicUrlFor(Invoice invoice) {
+        return appBaseUrl + "/i/" + invoice.getPublicToken();
+    }
+
+    /** Naira display for email bodies. Kobo → "₦1,234.56". */
+    private static String formatNaira(long kobo) {
+        BigDecimal naira = BigDecimal.valueOf(kobo).movePointLeft(2)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        return "₦" + String.format("%,.2f", naira);
     }
 
     @Transactional

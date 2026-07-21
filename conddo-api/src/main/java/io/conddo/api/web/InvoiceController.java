@@ -86,6 +86,16 @@ public class InvoiceController {
         return ApiResponse.ok(InvoiceRow.from(service.markSent(id)));
     }
 
+    /**
+     * Send the invoice to the customer by email. Also flips draft → sent.
+     * Idempotent when already sent — safe to hit twice as a re-send.
+     */
+    @PostMapping("/{id}/email")
+    @PreAuthorize(WRITE)
+    public ApiResponse<InvoiceRow> emailInvoice(@PathVariable UUID id) {
+        return ApiResponse.ok(InvoiceRow.from(service.sendInvoiceToCustomer(id)));
+    }
+
     @PostMapping("/{id}/mark-paid")
     @PreAuthorize(WRITE)
     public ApiResponse<InvoiceRow> markPaid(@PathVariable UUID id,
