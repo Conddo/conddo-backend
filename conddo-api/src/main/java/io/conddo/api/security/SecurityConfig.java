@@ -68,6 +68,11 @@ public class SecurityConfig {
                         // over the raw body; no JWT is forwarded
                         // (HANDOFF_2026-06-11 §8).
                         .requestMatchers(HttpMethod.POST, "/api/v1/billing/webhooks/paystack").permitAll()
+                        // Universal payments rail — Importapay + Routepay
+                        // (Phase 0). Each provider verifies HMAC-SHA512 in
+                        // its PaymentProvider implementation before any
+                        // work is done.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/payments/*").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

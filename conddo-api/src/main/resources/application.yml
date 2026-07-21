@@ -72,6 +72,23 @@ conddo:
   classify:
     mode: ${CONDDO_CLASSIFY_MODE:keyword}
 
+  # Payments (V74 Phase 0). Each provider handles a distinct flow:
+  #   paystack   — tenant → Conddo subscriptions (legacy rail lives on)
+  #   importapay — customer → tenant online collections
+  #   routepay   — customer → tenant offline / POS collections
+  # Webhook secrets are blank in dev — the provider signature check
+  # returns false on blank secret, which is exactly what we want when
+  # nothing is configured (no accidental unsigned webhook processing).
+  payments:
+    importapay:
+      webhook-secret: ${CONDDO_IMPORTAPAY_WEBHOOK_SECRET:}
+      api-key: ${CONDDO_IMPORTAPAY_API_KEY:}
+      base-url: ${CONDDO_IMPORTAPAY_BASE_URL:https://api.importapay.com}
+    routepay:
+      webhook-secret: ${CONDDO_ROUTEPAY_WEBHOOK_SECRET:}
+      api-key: ${CONDDO_ROUTEPAY_API_KEY:}
+      base-url: ${CONDDO_ROUTEPAY_BASE_URL:https://api.routepay.com}
+
   # Media storage via Cloudinary (§11.12). Upload returns a permanent, public,
   # CDN-backed secure_url (embedded in the dashboard, public website + emails).
   cloudinary:
