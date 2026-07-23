@@ -6,6 +6,7 @@ import io.conddo.core.domain.PaymentIntent;
 import io.conddo.core.payments.PaymentProvider;
 import io.conddo.core.payments.PaymentProviders;
 import io.conddo.core.service.PaymentEventIngestService;
+import io.conddo.core.service.PaymentWebhookDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,13 +46,16 @@ public class PaymentWebhookController {
 
     private final PaymentProviders providers;
     private final PaymentEventIngestService ingest;
+    private final PaymentWebhookDispatcher dispatcher;
     private final ObjectMapper objectMapper;
 
     public PaymentWebhookController(PaymentProviders providers,
                                     PaymentEventIngestService ingest,
+                                    PaymentWebhookDispatcher dispatcher,
                                     ObjectMapper objectMapper) {
         this.providers = providers;
         this.ingest = ingest;
+        this.dispatcher = dispatcher;
         this.objectMapper = objectMapper;
     }
 
@@ -97,13 +101,12 @@ public class PaymentWebhookController {
         return ResponseEntity.ok().build();
     }
 
-    /** Phase 0 stub — real dispatch (mark order paid, send receipt,
-     *  fan-out to origin feature) lands with the Importapay integration
-     *  in Phase 2. For now we just log the event type so integrations
-     *  under test can see their hooks land. */
+    /** Hand off to the dispatcher for real business action — mark the
+     *  linked intent succeeded/failed/refunded and fan out to origin. */
     private void dispatch(PaymentProvider prov, PaymentEvent event) {
-        log.info("payment webhook {}: received {} (event {})",
+        log.info("payment webhook {}: dispatching {} (event {})",
                 prov.providerName(), event.getEventType(), event.getProviderEventId());
+        dispatcher.dispatch(event);
     }
 
     /** Header where each provider stamps their signature. */

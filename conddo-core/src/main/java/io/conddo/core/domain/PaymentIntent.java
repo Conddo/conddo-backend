@@ -71,6 +71,15 @@ public class PaymentIntent {
     @Column(name = "checkout_url") private String checkoutUrl;
     @Column(name = "authorization_code") private String authorizationCode;
 
+    // Bank-transfer PSPs (Importapay) hand us a static receiving account
+    // instead of a checkout URL. Shown to the customer at pay time.
+    @Column(name = "receiving_bank_name") private String receivingBankName;
+    @Column(name = "receiving_account_number") private String receivingAccountNumber;
+    @Column(name = "receiving_account_name") private String receivingAccountName;
+    @Column(name = "sender_bank_name") private String senderBankName;
+    @Column(name = "sender_account_number") private String senderAccountNumber;
+    @Column(name = "matched_transaction_ref") private String matchedTransactionRef;
+
     @Column(nullable = false) private String status = STATUS_PENDING;
     @Column(name = "failure_reason") private String failureReason;
 
@@ -174,4 +183,17 @@ public class PaymentIntent {
     public void setMetadata(String v) { this.metadata = v; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
+
+    public String getReceivingBankName() { return receivingBankName; }
+    public void setReceivingBankName(String v) { this.receivingBankName = v; }
+    public String getReceivingAccountNumber() { return receivingAccountNumber; }
+    public void setReceivingAccountNumber(String v) { this.receivingAccountNumber = v; }
+    public String getReceivingAccountName() { return receivingAccountName; }
+    public void setReceivingAccountName(String v) { this.receivingAccountName = v; }
+    public String getSenderBankName() { return senderBankName; }
+    public void setSenderBankName(String v) { this.senderBankName = v; }
+    public String getSenderAccountNumber() { return senderAccountNumber; }
+    public void setSenderAccountNumber(String v) { this.senderAccountNumber = v; }
+    public String getMatchedTransactionRef() { return matchedTransactionRef; }
+    public void setMatchedTransactionRef(String v) { this.matchedTransactionRef = v; }
 }

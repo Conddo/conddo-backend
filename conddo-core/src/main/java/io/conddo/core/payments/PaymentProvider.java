@@ -63,4 +63,27 @@ public interface PaymentProvider {
      * probing attackers learn nothing.
      */
     boolean verifyWebhookSignature(String rawBody, String signature);
+
+    /**
+     * Confirm a bank-transfer intent — call after the customer says
+     * they've paid. The provider matches sender info against inbound
+     * credits and returns a resolved status. Not applicable to card /
+     * hosted-checkout providers; default throws.
+     */
+    default PaymentIntent confirmPayment(PaymentIntent intent, String senderBank, String senderAccountNumber) {
+        throw new UnsupportedOperationException(
+                providerName() + " does not support bank-transfer confirmation");
+    }
+
+    /**
+     * Fetch the list of supported sender banks (bank name + code) that
+     * the customer can pick from during confirmation. Bank-transfer
+     * providers expose this; card providers don't need it.
+     */
+    default java.util.List<BankOption> supportedBanks() {
+        return java.util.List.of();
+    }
+
+    /** Bank pick-list entry. */
+    record BankOption(String code, String name) {}
 }
