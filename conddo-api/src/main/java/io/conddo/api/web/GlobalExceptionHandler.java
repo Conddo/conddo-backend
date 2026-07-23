@@ -250,6 +250,19 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.fail(ApiError.of("CONFLICT", ex.getMessage())));
     }
 
+    /** IllegalStateException is a server-side programming error surfacing —
+     *  a broken invariant, missing configuration, etc. Log the raw class
+     *  and message server-side but hand the client a generic 500 so the
+     *  exception class name never leaks into the UI. */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
+        org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class)
+                .error("IllegalStateException surfaced to controller: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.fail(ApiError.of("SERVER_ERROR",
+                        "Something went wrong on our end. Please try again shortly.")));
+    }
+
     /** An over-limit upload is a client error, not a 500. */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException ex) {

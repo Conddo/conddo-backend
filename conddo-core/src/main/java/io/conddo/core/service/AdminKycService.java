@@ -4,6 +4,7 @@ import io.conddo.core.domain.TenantPaymentAccount;
 import io.conddo.core.repository.TenantPaymentAccountRepository;
 import io.conddo.core.tenant.TenantScoped;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -27,11 +28,13 @@ public class AdminKycService {
     }
 
     /** All accounts awaiting review, oldest submission first. */
+    @Transactional
     @TenantScoped(crossTenant = true)
     public List<TenantPaymentAccount> pendingReview() {
         return accounts.findByKycStatusOrderByKycSubmittedAtAsc(TenantPaymentAccount.KYC_UNDER_REVIEW);
     }
 
+    @Transactional
     @TenantScoped(crossTenant = true)
     public TenantPaymentAccount get(UUID tenantId) {
         return accounts.findById(tenantId)
@@ -39,6 +42,7 @@ public class AdminKycService {
     }
 
     /** Approve. Flips paymentsEnabled iff bank is verified. */
+    @Transactional
     @TenantScoped(crossTenant = true)
     public TenantPaymentAccount approve(UUID tenantId, UUID reviewerId) {
         TenantPaymentAccount acct = get(tenantId);
@@ -50,6 +54,7 @@ public class AdminKycService {
     }
 
     /** Reject with a reason the tenant will see on their /settings/payments. */
+    @Transactional
     @TenantScoped(crossTenant = true)
     public TenantPaymentAccount reject(UUID tenantId, UUID reviewerId, String reason) {
         TenantPaymentAccount acct = get(tenantId);

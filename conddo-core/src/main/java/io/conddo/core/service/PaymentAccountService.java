@@ -5,6 +5,7 @@ import io.conddo.core.repository.TenantPaymentAccountRepository;
 import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantScoped;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -27,6 +28,7 @@ public class PaymentAccountService {
     }
 
     /** Get or lazily create the current tenant's payment-account row. */
+    @Transactional
     @TenantScoped
     public TenantPaymentAccount getOrCreate() {
         UUID tenantId = TenantContext.require();
@@ -43,6 +45,7 @@ public class PaymentAccountService {
      * (Phase 2 wires that call; for now we trust what's passed in and
      * stamp {@code accountVerifiedAt}).
      */
+    @Transactional
     @TenantScoped
     public TenantPaymentAccount updateBankAccount(String bankCode,
                                                   String bankName,
@@ -62,6 +65,7 @@ public class PaymentAccountService {
      * review — the tenant must explicitly {@link #submitForReview()}
      * so admin work isn't triggered by draft uploads.
      */
+    @Transactional
     @TenantScoped
     public TenantPaymentAccount saveKycDocs(String cacUrl,
                                             String directorIdUrl,
@@ -81,6 +85,7 @@ public class PaymentAccountService {
      * bank account is on file — otherwise there's nothing meaningful
      * for admin to review.
      */
+    @Transactional
     @TenantScoped
     public TenantPaymentAccount submitForReview() {
         TenantPaymentAccount acct = getOrCreate();
