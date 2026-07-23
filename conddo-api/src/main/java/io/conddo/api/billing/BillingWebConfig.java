@@ -44,6 +44,12 @@ public class BillingWebConfig implements WebMvcConfigurer {
                         "/api/v1/public/book/**",
                         // Managed website renderer — public HTML anyway, no API
                         // key needed. See PublicManagedSiteController.
-                        "/api/v1/public/managed-site/**");
+                        "/api/v1/public/managed-site/**",
+                        // Customer-facing payment endpoints — the intent id is
+                        // the credential, no site key. See PublicPaymentController.
+                        "/api/v1/public/payments/**",
+                        // Public invoice view + Pay Online starter — unguessable
+                        // invoice token is the credential.
+                        "/api/v1/public/invoice/**");
     }
 }
