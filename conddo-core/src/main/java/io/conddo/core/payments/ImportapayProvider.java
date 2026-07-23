@@ -61,6 +61,16 @@ public class ImportapayProvider implements PaymentProvider {
     private final String webhookSecret;
     private final boolean enabled;
 
+    // Bank list cache — the CBN list barely changes and Importapay's
+    // /banks endpoint can cold-start slowly. 6h TTL is aggressive
+    // enough to pick up newly-added fintechs within the same day
+    // without spamming the provider on every FE mount.
+    private static final Duration BANK_CACHE_TTL = Duration.ofHours(6);
+    private final java.util.concurrent.atomic.AtomicReference<CachedBanks> bankCache =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    private record CachedBanks(List<BankOption> banks, java.time.Instant expiresAt) {}
+
     public ImportapayProvider(
             @Value("${conddo.payments.importapay.base-url:https://importa-pay-payments-x72y4.ondigitalocean.app/api}") String baseUrl,
             @Value("${conddo.payments.importapay.api-key:}") String apiKey,
@@ -172,6 +182,16 @@ public class ImportapayProvider implements PaymentProvider {
     @Override
     public List<BankOption> supportedBanks() {
         if (!enabled) return List.of();
+
+        // Serve from cache when fresh — the CBN bank list is stable and
+        // Importapay's endpoint can be slow on cold start. Every FE
+        // mount otherwise pays the full round-trip.
+        CachedBanks cached = bankCache.get();
+        java.time.Instant now = java.time.Instant.now();
+        if (cached != null && cached.expiresAt().isAfter(now)) {
+            return cached.banks();
+        }
+
         try {
             JsonNode banks = get("/merchant/banks").path("response");
             List<BankOption> out = new ArrayList<>();
@@ -180,10 +200,14 @@ public class ImportapayProvider implements PaymentProvider {
                         b.path("bankCode").asText(""),
                         b.path("bankName").asText(""))));
             }
+            bankCache.set(new CachedBanks(out, now.plus(BANK_CACHE_TTL)));
             return out;
         } catch (RuntimeException ex) {
             log.warn("Importapay bank list fetch failed: {}", ex.getMessage());
-            return List.of();
+            // Stale-if-error: return the last known-good list rather
+            // than an empty one, so a transient Importapay hiccup
+            // doesn't strand every tenant's payment page.
+            return cached != null ? cached.banks() : List.of();
         }
     }
 

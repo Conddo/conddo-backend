@@ -9,6 +9,8 @@ import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.service.PaymentIntentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
@@ -74,9 +77,15 @@ public class PublicPaymentController {
     }
 
     @GetMapping("/banks")
-    public ApiResponse<List<PaymentProvider.BankOption>> banks(
+    public ResponseEntity<ApiResponse<List<PaymentProvider.BankOption>>> banks(
             @RequestParam(defaultValue = "importapay") String provider) {
-        return ApiResponse.ok(payments.supportedBanks(provider));
+        // 6h browser cache — the CBN bank list is essentially static.
+        // Complements the 6h in-memory cache on ImportapayProvider so
+        // even the first browser to hit us serves out of cache on the
+        // repeat visit within the same day.
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofHours(6)).cachePublic())
+                .body(ApiResponse.ok(payments.supportedBanks(provider)));
     }
 
     // ----- wire shape ------------------------------------------------------
