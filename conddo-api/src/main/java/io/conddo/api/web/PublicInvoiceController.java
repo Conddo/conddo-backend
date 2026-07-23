@@ -4,12 +4,15 @@ import io.conddo.core.common.ApiResponse;
 import io.conddo.core.common.NotFoundException;
 import io.conddo.core.domain.Invoice;
 import io.conddo.core.domain.InvoiceLine;
+import io.conddo.core.domain.PaymentIntent;
 import io.conddo.core.domain.Tenant;
 import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.service.InvoiceService;
 import io.conddo.core.service.InvoiceService.PublicView;
+import io.conddo.core.service.PaymentIntentService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,11 +37,14 @@ public class PublicInvoiceController {
 
     private final InvoiceService invoiceService;
     private final TenantRepository tenantRepository;
+    private final PaymentIntentService paymentIntents;
 
     public PublicInvoiceController(InvoiceService invoiceService,
-                                   TenantRepository tenantRepository) {
+                                   TenantRepository tenantRepository,
+                                   PaymentIntentService paymentIntents) {
         this.invoiceService = invoiceService;
         this.tenantRepository = tenantRepository;
+        this.paymentIntents = paymentIntents;
     }
 
     @GetMapping("/{token}")
@@ -49,6 +55,19 @@ public class PublicInvoiceController {
                 .orElseThrow(() -> new NotFoundException("Business not found"));
         return ApiResponse.ok(PublicInvoiceDto.of(view, tenant));
     }
+
+    /**
+     * Spawn (or resume) a payment intent for this invoice and return the
+     * intent id. Called by the "Pay online" button on {@code /i/{token}}.
+     * FE then redirects the customer to {@code /pay/{intentId}}.
+     */
+    @PostMapping("/{token}/pay")
+    public ApiResponse<StartPayResponse> startPay(@PathVariable String token) {
+        PaymentIntent intent = paymentIntents.startForInvoice(token);
+        return ApiResponse.ok(new StartPayResponse(intent.getId()));
+    }
+
+    public record StartPayResponse(UUID intentId) {}
 
     // ----- wire shape ------------------------------------------------------
 
