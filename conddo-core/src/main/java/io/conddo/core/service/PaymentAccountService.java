@@ -85,6 +85,32 @@ public class PaymentAccountService {
      * bank account is on file — otherwise there's nothing meaningful
      * for admin to review.
      */
+    /**
+     * Wipe the bank account fields. Used when the tenant realises they
+     * typed the wrong details or wants to move settlement to a different
+     * bank. Refuses to touch anything once KYC is already under review
+     * or approved — bank changes at that stage need to go through KYC
+     * re-review to keep the audit trail defensible.
+     */
+    @Transactional
+    @TenantScoped
+    public TenantPaymentAccount clearBankAccount() {
+        TenantPaymentAccount acct = getOrCreate();
+        if (TenantPaymentAccount.KYC_UNDER_REVIEW.equals(acct.getKycStatus())
+                || TenantPaymentAccount.KYC_APPROVED.equals(acct.getKycStatus())) {
+            throw new IllegalArgumentException(
+                    "Bank details are locked while KYC is under review or approved. "
+                            + "Contact support to change your settlement account.");
+        }
+        acct.setBankCode(null);
+        acct.setBankName(null);
+        acct.setAccountNumber(null);
+        acct.setAccountName(null);
+        acct.setAccountVerifiedAt(null);
+        acct.setPaymentsEnabled(false);
+        return accounts.save(acct);
+    }
+
     @Transactional
     @TenantScoped
     public TenantPaymentAccount submitForReview() {

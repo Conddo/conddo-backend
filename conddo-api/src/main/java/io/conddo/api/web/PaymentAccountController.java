@@ -5,6 +5,7 @@ import io.conddo.core.domain.TenantPaymentAccount;
 import io.conddo.core.service.PaymentAccountService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -37,6 +38,11 @@ public class PaymentAccountController {
         return ApiResponse.ok(AccountView.of(
                 service.updateBankAccount(req.bankCode(), req.bankName(),
                         req.accountNumber(), req.accountName())));
+    }
+
+    @DeleteMapping("/bank")
+    public ApiResponse<AccountView> clearBank() {
+        return ApiResponse.ok(AccountView.of(service.clearBankAccount()));
     }
 
     @PutMapping("/kyc-docs")
