@@ -46,12 +46,16 @@ public class MediaSignatureController {
     private final boolean enabled;
 
     public MediaSignatureController(
-            @Value("${conddo.cloudinary.url:}") String cloudinaryUrl) {
+            // Read either name — the existing .env uses the un-prefixed
+            // CLOUDINARY_URL (the Cloudinary SDK reads it directly), so
+            // we accept both for compatibility with the current deploy.
+            @Value("${conddo.cloudinary.url:${cloudinary.url:}}") String cloudinaryUrl) {
+        String parsed = stripQuotes(cloudinaryUrl);
         // CLOUDINARY_URL shape: cloudinary://<key>:<secret>@<cloud>
         String cloud = null, key = null, secret = null;
-        if (cloudinaryUrl != null && cloudinaryUrl.startsWith("cloudinary://")) {
+        if (parsed != null && parsed.startsWith("cloudinary://")) {
             try {
-                String rest = cloudinaryUrl.substring("cloudinary://".length());
+                String rest = parsed.substring("cloudinary://".length());
                 int at = rest.indexOf('@');
                 if (at > 0) {
                     String creds = rest.substring(0, at);
@@ -70,6 +74,18 @@ public class MediaSignatureController {
         this.apiKey = key;
         this.apiSecret = secret;
         this.enabled = cloud != null && key != null && secret != null;
+    }
+
+    /** Docker Compose sometimes preserves surrounding double quotes from
+     *  {@code .env} lines like {@code KEY="value"}. Strip them so the URL
+     *  parser doesn't treat {@code "cloudinary://...} as a bad scheme. */
+    private static String stripQuotes(String v) {
+        if (v == null) return null;
+        String t = v.trim();
+        if ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) {
+            if (t.length() >= 2) t = t.substring(1, t.length() - 1);
+        }
+        return t;
     }
 
     /**
