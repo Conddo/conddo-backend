@@ -104,6 +104,69 @@ public class PaymentIntentService {
         return intents.save(verified);
     }
 
+    // ------------- tenant-facing reads (dashboard) ------------------------
+
+    /**
+     * Tenant transaction list — most recent first, filterable by status.
+     * Powers the /payments dashboard.
+     */
+    @Transactional(readOnly = true)
+    @TenantScoped
+    public org.springframework.data.domain.Page<PaymentIntent> listForTenant(
+            String status, int page, int size) {
+        UUID tenantId = TenantContext.require();
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(page, size);
+        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) {
+            return intents.findByTenantIdOrderByInitiatedAtDesc(tenantId, pageable);
+        }
+        return intents.findByTenantIdAndStatusOrderByInitiatedAtDesc(tenantId, status, pageable);
+    }
+
+    /**
+     * Balance + status counts for the tenant. Cheap SUM/COUNT calls, no
+     * cursor. Balance = sum of succeeded intents. Payout deduction lands
+     * once we ship Phase 4.
+     */
+    @Transactional(readOnly = true)
+    @TenantScoped
+    public TenantBalance tenantBalance() {
+        UUID tenantId = TenantContext.require();
+        long balanceKobo = intents.sumAmountKoboByStatus(tenantId, PaymentIntent.STATUS_SUCCEEDED);
+        long refundedKobo = intents.sumAmountKoboByStatus(tenantId, PaymentIntent.STATUS_REFUNDED);
+        long available = balanceKobo - refundedKobo;
+        return new TenantBalance(
+                Math.max(0, available),
+                intents.countByTenantIdAndStatus(tenantId, PaymentIntent.STATUS_SUCCEEDED),
+                intents.countByTenantIdAndStatus(tenantId, PaymentIntent.STATUS_PENDING),
+                intents.countByTenantIdAndStatus(tenantId, PaymentIntent.STATUS_FAILED),
+                intents.countByTenantIdAndStatus(tenantId, PaymentIntent.STATUS_REFUNDED)
+        );
+    }
+
+    /** Single intent for the tenant. Enforced by RLS to be their own. */
+    @Transactional(readOnly = true)
+    @TenantScoped
+    public Optional<PaymentIntent> getForTenant(UUID intentId) {
+        return intents.findById(intentId);
+    }
+
+    /** Every intent linked to a given invoice — the "Payment attempts"
+     *  strip on the invoice detail page. */
+    @Transactional(readOnly = true)
+    @TenantScoped
+    public List<PaymentIntent> forInvoice(UUID invoiceId) {
+        return intents.findByOriginInvoiceId(invoiceId);
+    }
+
+    public record TenantBalance(
+            long availableKobo,
+            long succeededCount,
+            long pendingCount,
+            long failedCount,
+            long refundedCount
+    ) {}
+
     // ------------- public / customer-facing flows -------------------------
     //
     // These run without a JWT — the caller is an end customer clicking
