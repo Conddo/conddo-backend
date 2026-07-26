@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 
-/**
+/** 
  * Fan-out half of the hourly expiry cron (merchant-readiness slice 3). Owns
  * the bell-feed + email + SMS dispatch for a single subscription transition.
  *
@@ -26,7 +26,7 @@ import java.util.Optional;
  * the same bean as the scheduler would self-invoke and miss the
  * {@code REQUIRES_NEW} boundary, leaving the {@code tenantSession.bind()}
  * call running outside any transaction. 
- */
+ */ 
 @Component
 public class BillingExpiryNotifier {
 
@@ -54,11 +54,11 @@ public class BillingExpiryNotifier {
         this.gracePeriodDays = gracePeriodDays;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void notify(TransitionResult t) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW) 
+    public void notify(TransitionResult t) { 
         if (!"grace".equals(t.toStatus()) && !"expired".equals(t.toStatus())) {
             // Cancelled-completion is silent (merchant initiated it).
-            return;
+            return; 
         }
         try {
             TenantContext.set(t.tenantId());
@@ -68,7 +68,7 @@ public class BillingExpiryNotifier {
             if (tenant == null) {
                 return;
             }
-            Optional<User> owner = userRepository.findFirstByRoleOrderByCreatedAtAsc("TENANT_ADMIN");
+            Optional<User> owner = userRepository.findOwnerByTenantIdCrossTenant(t.tenantId());
             String planName = planRepository.findById(t.planId())
                     .map(SubscriptionPlan::getName)
                     .orElse("plan");
@@ -95,8 +95,8 @@ public class BillingExpiryNotifier {
     }
 
     private static String firstNonBlank(String a, String b) {
-        if (a != null && !a.isBlank()) {
-            return a;
+        if (a != null && !a.isBlank()) {  
+            return a; 
         } 
         return b;
     }
