@@ -156,19 +156,19 @@ public class VerticalSignupSeeder {
         LocalDate today = LocalDate.now();
         inventoryService.create("Paracetamol 500mg (Strip of 10)", "PCM-500-10", null,
                 new BigDecimal("250"), 80, 20, true,
-                today.plusYears(2), "BATCH-PCM-2026-A");
+                today.plusYears(2), "BATCH-PCM-2026-A", null);
         inventoryService.create("Amoxicillin 500mg (Course of 21)", "AMX-500-21", null,
                 new BigDecimal("1500"), 30, 10, true,
-                today.plusDays(14), "BATCH-AMX-2025-Q4");
+                today.plusDays(14), "BATCH-AMX-2025-Q4", null);
         inventoryService.create("Vitamin C 1000mg (Bottle of 30)", "VITC-1000-30", null,
                 new BigDecimal("2000"), 50, 15, true,
-                today.plusYears(1).plusMonths(6), "BATCH-VITC-2026-B");
+                today.plusYears(1).plusMonths(6), "BATCH-VITC-2026-B", null);
         inventoryService.create("Blood Pressure Monitor", "BPM-DIGITAL", null,
                 new BigDecimal("18000"), 4, 2, true,
-                null, null);   // device — no expiry.
+                null, null, null);   // device — no expiry.
         inventoryService.create("Hand Sanitiser 500ml", "SAN-500", null,
                 new BigDecimal("1200"), 25, 10, true,
-                today.minusDays(10), "BATCH-SAN-2024-X");   // expired — shows the warning.
+                today.minusDays(10), "BATCH-SAN-2024-X", null);   // expired — shows the warning.
 
         // One in-flight order.
         orderService.create(mr_okafor.getId(), mr_okafor.getFullName(),

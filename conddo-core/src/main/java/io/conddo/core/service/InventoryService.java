@@ -74,14 +74,15 @@ public class InventoryService {
     @Transactional
     public ProductView create(String name, String sku, UUID categoryId, BigDecimal price,
                               int stock, int reorderThreshold, Boolean active) {
-        return create(name, sku, categoryId, price, stock, reorderThreshold, active, null, null);
+        return create(name, sku, categoryId, price, stock, reorderThreshold, active, null, null, null);
     }
 
     /** Full-fidelity create — pharmacy callers pass {@code expiryDate} + {@code batchNumber}. */
     @Transactional
     public ProductView create(String name, String sku, UUID categoryId, BigDecimal price,
                               int stock, int reorderThreshold, Boolean active,
-                              LocalDate expiryDate, String batchNumber) {
+                              LocalDate expiryDate, String batchNumber,
+                              List<String> images) {
         tenantSession.bind();
         if (categoryId != null) {
             requireCategory(categoryId);
@@ -93,6 +94,9 @@ public class InventoryService {
         product.setExpiryDate(expiryDate);
         if (batchNumber != null) {
             product.setBatchNumber(batchNumber);
+        }
+        if (images != null) {
+            product.setImages(images);
         }
         return withCategory(productRepository.save(product));
     }
@@ -107,7 +111,7 @@ public class InventoryService {
     public ProductView update(UUID id, String name, String sku, UUID categoryId, BigDecimal price,
                               Integer stock, Integer reorderThreshold, Boolean active) {
         return update(id, name, sku, categoryId, price, stock, reorderThreshold, active,
-                false, null, null);
+                false, null, null, null);
     }
 
     /**
@@ -117,7 +121,8 @@ public class InventoryService {
     @Transactional
     public ProductView update(UUID id, String name, String sku, UUID categoryId, BigDecimal price,
                               Integer stock, Integer reorderThreshold, Boolean active,
-                              boolean expiryDateProvided, LocalDate expiryDate, String batchNumber) {
+                              boolean expiryDateProvided, LocalDate expiryDate, String batchNumber,
+                              List<String> images) {
         tenantSession.bind();
         Product product = requireProduct(id);
         product.rename(name);
@@ -145,6 +150,9 @@ public class InventoryService {
         }
         if (batchNumber != null) {
             product.setBatchNumber(batchNumber);
+        }
+        if (images != null) {
+            product.setImages(images);
         }
         return withCategory(productRepository.save(product));
     }

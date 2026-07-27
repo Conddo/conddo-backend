@@ -69,7 +69,7 @@ public class InventoryController {
     public ResponseEntity<ApiResponse<ProductRow>> create(@Valid @RequestBody CreateProductRequest request) {
         ProductView created = inventoryService.create(request.name(), request.sku(), request.categoryId(),
                 request.price(), orZero(request.stock()), orZero(request.reorderThreshold()), request.active(),
-                request.expiryDate(), request.batchNumber());
+                request.expiryDate(), request.batchNumber(), request.images());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(ProductRow.from(created)));
     }
 
@@ -128,7 +128,8 @@ public class InventoryController {
     public ApiResponse<ProductRow> update(@PathVariable UUID id, @RequestBody UpdateProductRequest request) {
         return ApiResponse.ok(ProductRow.from(inventoryService.update(id, request.name(), request.sku(),
                 request.categoryId(), request.price(), request.stock(), request.reorderThreshold(),
-                request.active(), request.expiryDateKeyPresent(), request.expiryDate(), request.batchNumber())));
+                request.active(), request.expiryDateKeyPresent(), request.expiryDate(), request.batchNumber(),
+                request.images())));
     }
 
     @DeleteMapping("/products/{id}")
