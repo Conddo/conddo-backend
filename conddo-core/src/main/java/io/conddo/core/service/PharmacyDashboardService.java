@@ -7,6 +7,7 @@ import io.conddo.core.domain.User;
 import io.conddo.core.repository.ConsultationRepository;
 import io.conddo.core.repository.CustomerPrescriptionRepository;
 import io.conddo.core.repository.UserRepository;
+import io.conddo.core.tenant.TenantContext;
 import io.conddo.core.tenant.TenantSession;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -110,5 +111,18 @@ public class PharmacyDashboardService {
                 .orElseThrow(() -> new NotFoundException("Consultation not found"));
         row.updateStatus(newStatus, pharmacistNote, OffsetDateTime.now(clock));
         return consultationRepository.save(row);
+    }
+
+    /**
+     * Create a consultation from the public website form submission.
+     * The PublicSiteInterceptor has already bound the tenant context.
+     */
+    @Transactional
+    public Consultation createConsultation(String customerName, String whatsappNumber,
+                                            String topic) {
+        UUID tenantId = TenantContext.require();
+        Consultation consultation = new Consultation(tenantId, null, customerName,
+                whatsappNumber, topic, null);
+        return consultationRepository.save(consultation);
     }
 }
