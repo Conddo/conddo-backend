@@ -74,7 +74,7 @@ public class BookingNotificationListener {
             if (tenant == null) {
                 return;
             }
-            Optional<User> owner = userRepository.findFirstByRoleOrderByCreatedAtAsc("TENANT_ADMIN");
+            Optional<User> owner = userRepository.findOwnerByTenantIdCrossTenant(event.tenantId());
 
             String whenStr = event.startsAt() == null
                     ? null : WHEN_FORMAT.format(event.startsAt());

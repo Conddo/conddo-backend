@@ -75,7 +75,7 @@ public class OrderNotificationListener {
             if (tenant == null) {
                 return;
             }
-            Optional<User> owner = userRepository.findFirstByRoleOrderByCreatedAtAsc("TENANT_ADMIN");
+            Optional<User> owner = userRepository.findOwnerByTenantIdCrossTenant(event.tenantId());
 
             String title = "New order " + event.orderReference();
             String body = event.customerName() + " ordered ₦" + formatNgn(event.totalNgn())

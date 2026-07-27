@@ -53,7 +53,7 @@ public class DiscountPendingNotificationListener {
         try {
             TenantContext.set(event.tenantId());
             tenantSession.bind();
-            Optional<User> owner = userRepository.findFirstByRoleOrderByCreatedAtAsc("TENANT_ADMIN");
+            Optional<User> owner = userRepository.findOwnerByTenantIdCrossTenant(event.tenantId());
 
             String productLabel = productRepository.findById(event.productId())
                     .map(p -> p.getNameGeneric() == null ? p.getName() : p.getNameGeneric())
