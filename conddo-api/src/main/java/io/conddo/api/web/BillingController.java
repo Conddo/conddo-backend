@@ -49,7 +49,7 @@ public class BillingController {
     }
 
     @GetMapping("/plans")
-    @PreAuthorize(READ)
+    @PreAuthorize("permitAll()")
     public ApiResponse<List<PlanDto>> plans() {
         return ApiResponse.ok(billingService.catalog().stream().map(PlanDto::from).toList());
     }
