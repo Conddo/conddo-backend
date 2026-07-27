@@ -69,11 +69,12 @@ class VerticalSignupSeederTest {
         seeder(true).onTenantActivated_seedSampleData(new TenantActivatedEvent(tenantId));
 
         verify(customerService, times(3)).create(anyString(), anyString(), anyString(), anyString());
-        // Inventory now uses the 9-arg create with expiryDate + batchNumber.
+        // Inventory now uses the 10-arg create with expiryDate + batchNumber + images.
         verify(inventoryService, times(5)).create(anyString(), anyString(), any(),
                 any(BigDecimal.class), anyInt(), anyInt(), eq(true),
                 org.mockito.ArgumentMatchers.<java.time.LocalDate>any(),
-                org.mockito.ArgumentMatchers.<String>any());
+                org.mockito.ArgumentMatchers.<String>any(),
+                org.mockito.ArgumentMatchers.<java.util.List<String>>any());
         verify(orderService, times(1)).create(any(), anyString(), anyString(), anyString(),
                 any(), any(), any(), any(), anyString());
         verify(prescriptionService, times(3)).create(any(UUID.class), org.mockito.ArgumentMatchers.<String>any(),
