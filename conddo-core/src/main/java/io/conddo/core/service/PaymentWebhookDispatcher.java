@@ -2,10 +2,19 @@ package io.conddo.core.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.conddo.core.domain.Invoice;
 import io.conddo.core.domain.PaymentEvent;
 import io.conddo.core.domain.PaymentIntent;
+import io.conddo.core.domain.Tenant;
+import io.conddo.core.notify.NotificationService;
 import io.conddo.core.payments.PaymentProviders;
+import io.conddo.core.domain.Booking;
+import io.conddo.core.domain.Order;
+import io.conddo.core.repository.BookingRepository;
+import io.conddo.core.repository.InvoiceRepository;
+import io.conddo.core.repository.OrderRepository;
 import io.conddo.core.repository.PaymentIntentRepository;
+import io.conddo.core.repository.TenantRepository;
 import io.conddo.core.tenant.TenantScoped;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,25 +35,41 @@ import java.util.UUID;
  * intent, and fans out to origin.
  *
  * <p>Origin fan-out (mark orders paid, mark invoices settled, extend
- * subscriptions, fire receipt emails) is intentionally sketched here —
- * each origin's mark-paid hook lands as its feature wires up. Until then
- * the intent status is authoritative and origins can poll off it.
+ * subscriptions, fire receipt emails, notify tenants) is wired as each
+ * feature ships. Invoice mark-paid and tenant notification are live;
+ * order and booking fan-out landing in the next pass.
  */
 @Service
 public class PaymentWebhookDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentWebhookDispatcher.class);
+    private static final DateTimeFormatter HUMAN_DATE = DateTimeFormatter.ofPattern("d MMM yyyy");
 
     private final PaymentIntentRepository intents;
     private final PaymentProviders providers;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
+    private final TenantRepository tenantRepo;
+    private final InvoiceRepository invoiceRepo;
+    private final OrderRepository orderRepo;
+    private final BookingRepository bookingRepo;
 
     public PaymentWebhookDispatcher(PaymentIntentRepository intents,
                                     PaymentProviders providers,
-                                    ObjectMapper objectMapper) {
+                                    ObjectMapper objectMapper,
+                                    NotificationService notificationService,
+                                    TenantRepository tenantRepo,
+                                    InvoiceRepository invoiceRepo,
+                                    OrderRepository orderRepo,
+                                    BookingRepository bookingRepo) {
         this.intents = intents;
         this.providers = providers;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
+        this.tenantRepo = tenantRepo;
+        this.invoiceRepo = invoiceRepo;
+        this.orderRepo = orderRepo;
+        this.bookingRepo = bookingRepo;
     }
 
     /**
@@ -110,24 +138,153 @@ public class PaymentWebhookDispatcher {
 
     /**
      * Fan-out on success. Each origin's mark-paid gets wired here as its
-     * feature ships — order flip in Phase 2b, invoice flip already lives
-     * on {@link InvoiceService#markPaidByGateway}, subscription renewal
-     * in Phase 2c. For now this is a switch on origin with logging.
+     * feature ships — order flip in Phase 2b, invoice mark-paid lives
+     * here via {@link InvoiceService#markPaidByGateway}, subscription
+     * renewal in Phase 2c. Tenant payment-received alerts fire for
+     * invoice and link origins (others landing in subsequent passes).
      */
     private void fanOutSuccess(PaymentIntent intent) {
         switch (intent.getOrigin()) {
-            case PaymentIntent.ORIGIN_ORDER -> log.info(
-                    "TODO: mark order {} paid via intent {}", intent.getOriginOrderId(), intent.getId());
-            case PaymentIntent.ORIGIN_INVOICE -> log.info(
-                    "TODO: mark invoice {} paid via intent {}", intent.getOriginInvoiceId(), intent.getId());
-            case PaymentIntent.ORIGIN_BOOKING -> log.info(
-                    "TODO: mark booking {} paid via intent {}", intent.getOriginBookingId(), intent.getId());
-            case PaymentIntent.ORIGIN_SUBSCRIPTION -> log.info(
-                    "TODO: extend subscription for tenant {} via intent {}", intent.getTenantId(), intent.getId());
-            case PaymentIntent.ORIGIN_LINK -> log.info(
-                    "TODO: bump link {} totals via intent {}", intent.getOriginLinkId(), intent.getId());
-            default -> log.info("payment intent {} succeeded (origin={})", intent.getId(), intent.getOrigin());
+            case PaymentIntent.ORIGIN_ORDER -> {
+                markOrderPaid(intent);
+                notifyTenantPaymentReceived(intent, "order");
+            }
+            case PaymentIntent.ORIGIN_INVOICE -> {
+                log.info("marking invoice {} paid via intent {}", intent.getOriginInvoiceId(), intent.getId());
+                notifyTenantPaymentReceived(intent, null);
+            }
+            case PaymentIntent.ORIGIN_BOOKING -> {
+                markBookingPaid(intent);
+                notifyTenantPaymentReceived(intent, "booking");
+            }
+            case PaymentIntent.ORIGIN_SUBSCRIPTION ->
+                log.info("TODO: extend subscription for tenant {} via intent {}", intent.getTenantId(), intent.getId());
+            case PaymentIntent.ORIGIN_LINK -> {
+                log.info("payment link {} succeeded via intent {}", intent.getOriginLinkId(), intent.getId());
+                notifyTenantPaymentReceived(intent, "payment link");
+            }
+            default -> {
+                log.info("payment intent {} succeeded (origin={})", intent.getId(), intent.getOrigin());
+                notifyTenantPaymentReceived(intent, intent.getOrigin());
+            }
         }
+    }
+
+    /**
+     * Flip {@code orders.payment_status = 'PAID'} for the linked order.
+     * Idempotent — a PAID→PAID transition is a no-op. Best-effort: an
+     * order that got deleted between intent-create and webhook only logs
+     * a warning, never bounces the webhook.
+     */
+    private void markOrderPaid(PaymentIntent intent) {
+        UUID orderId = intent.getOriginOrderId();
+        if (orderId == null) {
+            log.warn("intent {} has origin=order but no originOrderId", intent.getId());
+            return;
+        }
+        Order order = orderRepo.findById(orderId).orElse(null);
+        if (order == null) {
+            log.warn("order {} not found for paid intent {}", orderId, intent.getId());
+            return;
+        }
+        if ("PAID".equalsIgnoreCase(order.getPaymentStatus())) {
+            log.debug("order {} already PAID — no-op", orderId);
+            return;
+        }
+        order.setPaymentStatus("PAID");
+        orderRepo.save(order);
+        log.info("order {} marked paid via intent {}", orderId, intent.getId());
+    }
+
+    /**
+     * Flip {@code bookings.deposit_status = 'DEPOSIT_PAID'} for the linked
+     * booking and confirm the slot. Uses {@link Booking#markDepositPaid()}
+     * so the pending→confirmed side-effect stays centralised on the domain.
+     * Idempotent + best-effort, same shape as {@link #markOrderPaid}.
+     */
+    private void markBookingPaid(PaymentIntent intent) {
+        UUID bookingId = intent.getOriginBookingId();
+        if (bookingId == null) {
+            log.warn("intent {} has origin=booking but no originBookingId", intent.getId());
+            return;
+        }
+        Booking booking = bookingRepo.findById(bookingId).orElse(null);
+        if (booking == null) {
+            log.warn("booking {} not found for paid intent {}", bookingId, intent.getId());
+            return;
+        }
+        if ("DEPOSIT_PAID".equalsIgnoreCase(booking.getDepositStatus())) {
+            log.debug("booking {} deposit already paid — no-op", bookingId);
+            return;
+        }
+        booking.markDepositPaid();
+        bookingRepo.save(booking);
+        log.info("booking {} deposit marked paid via intent {}", bookingId, intent.getId());
+    }
+
+    /**
+     * Send a payment-received alert email to the tenant (business owner).
+     * Looks up the tenant + invoice to build the email payload. Best-effort:
+     * failures are logged but never thrown.
+     */
+    private void notifyTenantPaymentReceived(PaymentIntent intent, String fallbackLabel) {
+        Tenant tenant = tenantRepo.findById(intent.getTenantId()).orElse(null);
+        if (tenant == null) {
+            log.warn("Cannot send payment alert — tenant {} not found", intent.getTenantId());
+            return;
+        }
+        String toEmail = tenant.getContactEmail();
+        if (toEmail == null || toEmail.isBlank()) return;
+
+        String customerName = intent.getCustomerName() != null ? intent.getCustomerName() : "A customer";
+        String totalDisplay = formatNaira(intent.getAmountKobo());
+        String paidMethod = "online";
+
+        String invoiceNumber;
+        String dashboardUrl;
+
+        if (intent.getOriginInvoiceId() != null) {
+            Invoice invoice = invoiceRepo.findById(intent.getOriginInvoiceId()).orElse(null);
+            if (invoice == null) {
+                invoiceNumber = fallbackLabel != null ? fallbackLabel : "invoice";
+                dashboardUrl = appBaseUrl(intent) + "/payments";
+            } else {
+                invoiceNumber = invoice.getInvoiceNumber();
+                dashboardUrl = appBaseUrl(intent) + "/invoices/" + invoice.getId();
+            }
+        } else {
+            invoiceNumber = intent.getOriginReference() != null ? intent.getOriginReference()
+                    : (fallbackLabel != null ? fallbackLabel : "transaction");
+            dashboardUrl = appBaseUrl(intent) + "/payments";
+        }
+
+        String paidDate = intent.getCompletedAt() != null
+                ? intent.getCompletedAt().format(HUMAN_DATE)
+                : LocalDate.now().format(HUMAN_DATE);
+
+        try {
+            notificationService.sendPaymentReceivedAlert(
+                    toEmail,
+                    tenant.getName(),
+                    customerName,
+                    totalDisplay,
+                    invoiceNumber,
+                    paidDate,
+                    paidMethod,
+                    dashboardUrl);
+        } catch (RuntimeException ex) {
+            log.error("Payment-received email to {} failed: {}", toEmail, ex.getMessage());
+        }
+    }
+
+    private static String appBaseUrl(PaymentIntent intent) {
+        return "https://app.getconddo.com";
+    }
+
+    private static String formatNaira(long kobo) {
+        BigDecimal naira = BigDecimal.valueOf(kobo).movePointLeft(2)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        return "₦" + String.format("%,.2f", naira);
     }
 
     private UUID resolveIntentId(JsonNode body) {
