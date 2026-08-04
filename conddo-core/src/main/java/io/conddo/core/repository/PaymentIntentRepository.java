@@ -29,6 +29,22 @@ public interface PaymentIntentRepository extends JpaRepository<PaymentIntent, UU
     /** Count intents by status for the tenant summary. */
     long countByTenantIdAndStatus(UUID tenantId, String status);
 
+    // ---- admin / cross-tenant reads -------------------------------------
+    // These must be called from an @TenantScoped(crossTenant = true) method
+    // so RLS lets them see every tenant's rows.
+
+    Page<PaymentIntent> findAllByOrderByInitiatedAtDesc(Pageable pageable);
+
+    Page<PaymentIntent> findByStatusOrderByInitiatedAtDesc(String status, Pageable pageable);
+
+    /** Cross-tenant SUM for the admin platform-wide gross. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT COALESCE(SUM(p.amountKobo), 0) FROM PaymentIntent p WHERE p.status = :status")
+    long sumAmountKoboByStatusAll(@org.springframework.data.repository.query.Param("status") String status);
+
+    /** Cross-tenant count by status for admin summary cards. */
+    long countByStatus(String status);
+
     Optional<PaymentIntent> findByProviderReference(String providerReference);
 
     Optional<PaymentIntent> findByTenantIdAndIdempotencyKey(UUID tenantId, String idempotencyKey);
