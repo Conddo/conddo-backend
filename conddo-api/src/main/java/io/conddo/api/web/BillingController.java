@@ -5,13 +5,16 @@ import io.conddo.api.web.dto.SubscriptionDto;
 import io.conddo.api.web.dto.UpgradeRequest;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.common.NotFoundException;
+import io.conddo.core.domain.TenantPaymentAccount;
 import io.conddo.core.service.BillingPaystackService;
 import io.conddo.core.service.BillingPaystackService.CheckoutResult;
 import io.conddo.core.service.BillingPaystackService.VerifyResult;
 import io.conddo.core.service.BillingService;
+import io.conddo.core.service.PaymentAccountService;
 import io.conddo.core.tenant.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -41,11 +44,17 @@ public class BillingController {
 
     private final BillingService billingService;
     private final BillingPaystackService paystackService;
+    private final PaymentAccountService paymentAccountService;
+    private final String paystackSecretKey;
 
     public BillingController(BillingService billingService,
-                              BillingPaystackService paystackService) {
+                              BillingPaystackService paystackService,
+                              PaymentAccountService paymentAccountService,
+                              @Value("${conddo.paystack.secret-key:}") String paystackSecretKey) {
         this.billingService = billingService;
         this.paystackService = paystackService;
+        this.paymentAccountService = paymentAccountService;
+        this.paystackSecretKey = paystackSecretKey;
     }
 
     @GetMapping("/plans")
@@ -129,6 +138,34 @@ public class BillingController {
             row.put("subscription", SubscriptionDto.from(
                     billingService.getActiveSubscription(result.subscription().getTenantId()).orElseThrow()));
         }
+        return ApiResponse.ok(row);
+    }
+
+    /**
+     * Settings-row placeholder: how the tenant pays Conddo (Paystack) and
+     * where their customers' money lands (their own bank / connected
+     * Moniepoint / OPay account). Read-only; the payment account itself
+     * is managed under /me/payments/account.
+     */
+    @GetMapping("/payment-methods")
+    @PreAuthorize(READ)
+    public ApiResponse<Map<String, Object>> paymentMethods() {
+        UUID tenantId = TenantContext.require();
+        TenantPaymentAccount account = paymentAccountService.getOrCreate();
+        Map<String, Object> row = new LinkedHashMap<>();
+        Map<String, Object> bank = new LinkedHashMap<>();
+        bank.put("bankName", account.getBankName());
+        bank.put("accountNumber", account.getAccountNumber());
+        bank.put("accountName", account.getAccountName());
+        bank.put("verified", account.getAccountVerifiedAt() != null);
+        row.put("bank", bank);
+        row.put("paystackConfigured", paystackSecretKey != null && !paystackSecretKey.isBlank());
+        // Connected-account providers the tenant can onboard for
+        // customer-facing transfers (V77). The /integrations endpoints
+        // manage the actual connections.
+        row.put("transferProviders", List.of("moniepoint", "opay"));
+        row.put("subscription", billingService.getActiveSubscription(tenantId)
+                .map(SubscriptionDto::from).orElse(null));
         return ApiResponse.ok(row);
     }
 

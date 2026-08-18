@@ -54,6 +54,25 @@ services:
       # Redis isn't provisioned yet (Phase 1 item 2) — keep its health check off.
       - key: CONDDO_REDIS_HEALTH_ENABLED
         value: "false"
+      # --- Paystack billing (tenant -> Conddo subscriptions) ---
+      # Secret key from the Paystack dashboard. Without it /billing/checkout
+      # returns PAYSTACK_NOT_CONFIGURED (the DormantPaystackGateway path).
+      # Webhook URL to configure in Paystack:
+      #   https://api.getconddo.com/api/v1/billing/webhooks/paystack
+      - key: CONDDO_PAYSTACK_SECRET_KEY
+        sync: false
+      # --- Connected accounts (V77): Moniepoint / OPay ---
+      # 32-byte AES-256 envelope key for at-rest encryption of tenant
+      # integration credentials. Generate once: openssl rand -base64 32
+      - key: CONDDO_INTEGRATIONS_ENCRYPTION_KEY
+        sync: false
+      # Webhook secrets shared with the providers (set in their dashboards,
+      # pointing at /api/v1/webhooks/integrations/{moniepoint,opay}).
+      # Blank = webhooks rejected; the poller is the fallback ingestion path.
+      - key: CONDDO_MONIEPOINT_WEBHOOK_SECRET
+        sync: false
+      - key: CONDDO_OPAY_WEBHOOK_SECRET
+        sync: false
       # Media storage (§11.12) — Cloudinary. cloudinary://<key>:<secret>@<cloud> from
       # the Cloudinary dashboard. Unset = uploads return 502 until configured.
       - key: CLOUDINARY_URL

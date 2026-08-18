@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
  * so a probing attacker doesn't learn anything from the response.
  */
 @RestController
-@RequestMapping("/api/v1/billing/webhooks/paystack")
+@RequestMapping("/api/v1/billing/webhooks")
 public class PaystackWebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(PaystackWebhookController.class);
@@ -39,7 +39,7 @@ public class PaystackWebhookController {
         this.objectMapper = objectMapper;
     }
 
-    @PostMapping
+    @PostMapping({"/paystack", "/webhook/paystack"})
     public ResponseEntity<Void> receive(@RequestBody String rawBody,
                                         HttpServletRequest request) {
         String signature = request.getHeader("x-paystack-signature");

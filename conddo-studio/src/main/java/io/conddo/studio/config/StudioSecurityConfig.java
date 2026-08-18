@@ -55,6 +55,16 @@ public class StudioSecurityConfig {
                         .jwt(jwt -> jwt.decoder(studioJwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .addFilterBefore(serviceTokenFilter, BearerTokenAuthenticationFilter.class)
+                // Security headers: HSTS, XSS protection, clickjacking defence.
+                .headers(headers -> headers
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(63072000)
+                                .preload(true))
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .xssProtection(Customizer.withDefaults())
+                        .frameOptions(frame -> frame.deny())
+                        .cacheControl(Customizer.withDefaults()))
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(errorResponder)
                         .accessDeniedHandler(errorResponder));

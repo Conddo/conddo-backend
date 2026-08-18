@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+  <title>Payment received — {{BUSINESS_NAME}}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#F4F3F0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F3F0;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0">
+          <tr>
+            <td align="left" style="padding:4px 8px 24px;">
+              <img src="{{LOGO_URL}}" alt="conddo" height="28" style="height:28px; border:0; display:block;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#DCFCE7; border:1px solid #BBF7D0; border-radius:14px; padding:32px 40px; text-align:center;">
+              <p style="font-size:36px; margin:0 0 12px 0;">&#x2705;</p>
+              <p style="font-family:sans-serif; color:#166534; font-size:22px; font-weight:600; margin:0 0 6px 0;">Payment received</p>
+              <p style="font-family:sans-serif; color:#166534; font-size:15px; margin:0 0 20px 0;"><strong>{{CUSTOMER_NAME}}</strong> paid you <strong style="font-size:22px;">{{TOTAL_DISPLAY}}</strong></p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFFFFF; border:1px solid #BBF7D0; border-radius:12px; text-align:left;">
+                <tr><td style="font-family:sans-serif; color:#565656; font-size:13px; padding:14px 18px;"><span style="color:#8A8A8A;">Invoice</span>&nbsp;&nbsp;<strong style="color:#166534;">{{INVOICE_NUMBER}}</strong></td></tr>
+                <tr><td style="font-family:sans-serif; color:#565656; font-size:13px; padding:0 18px 14px;"><span style="color:#8A8A8A;">Paid on</span>&nbsp;&nbsp;<strong style="color:#141414;">{{PAID_DATE}}</strong></td></tr>
+                <tr><td style="font-family:sans-serif; color:#565656; font-size:13px; padding:0 18px 14px;"><span style="color:#8A8A8A;">Method</span>&nbsp;&nbsp;<strong style="color:#141414;">{{PAID_METHOD}}</strong></td></tr>
+              </table>
+              <p style="margin:20px 0 0 0;"><a href="{{DASHBOARD_URL}}" style="display:inline-block; background-color:#166534; color:#FFFFFF; font-family:sans-serif; font-size:15px; font-weight:600; text-decoration:none; padding:14px 28px; border-radius:10px;">View in dashboard</a></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 8px 0;">
+              <p style="margin:0; font-family:sans-serif; color:#9A9A9A; font-size:12px;">Conddo.io — your business platform.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

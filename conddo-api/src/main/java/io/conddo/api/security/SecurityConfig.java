@@ -25,6 +25,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.time.Clock;
 import java.util.List;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 /**
  * The application's security policy (PRD §6.2).
  *
@@ -46,7 +48,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder,
-                                                   SecurityErrorResponder errorResponder) throws Exception {
+                                                   SecurityErrorResponder errorResponder,
+                                                   InMemoryRateLimiter rateLimiter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -66,13 +69,20 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/webhooks/ayrshare").permitAll()
                         // Paystack webhook — controller verifies HMAC-SHA512
                         // over the raw body; no JWT is forwarded
-                        // (HANDOFF_2026-06-11 §8).
+                        // (HANDOFF_2026-06-11 §8). The singular
+                        // /webhook/paystack alias is the path the app probes.
                         .requestMatchers(HttpMethod.POST, "/api/v1/billing/webhooks/paystack").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/billing/webhook/paystack").permitAll()
                         // Universal payments rail — Importapay + Routepay
                         // (Phase 0). Each provider verifies HMAC-SHA512 in
                         // its PaymentProvider implementation before any
                         // work is done.
                         .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/payments/*").permitAll()
+                        // Connected-account webhooks (Moniepoint + OPay) —
+                        // the controller verifies HMAC-SHA512 against the
+                        // configured webhook secret before any work is
+                        // done (V77).
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/integrations/*").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -94,10 +104,22 @@ public class SecurityConfig {
                         .jwt(jwt -> jwt
                                 .decoder(jwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())))
+                // Security headers: HSTS, XSS protection, clickjacking defence,
+                // MIME-sniffing prevention. These complement the CSP set by the
+                // Next.js frontend and apply when the API is called directly.
+                .headers(headers -> headers
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(63072000)
+                                .preload(true))
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .xssProtection(Customizer.withDefaults())
+                        .frameOptions(frame -> frame.deny())
+                        .cacheControl(Customizer.withDefaults()))
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(errorResponder)
                         .accessDeniedHandler(errorResponder))
-                .addFilterBefore(new AuditContextFilter(), BearerTokenAuthenticationFilter.class)
+                .addFilterBefore(new AuthRateLimitFilter(rateLimiter), AuditContextFilter.class)
                 .addFilterAfter(new JwtTenantContextFilter(), BearerTokenAuthenticationFilter.class);
         return http.build();
     }

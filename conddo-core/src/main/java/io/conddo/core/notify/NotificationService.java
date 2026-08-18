@@ -1,5 +1,7 @@
 package io.conddo.core.notify;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,8 @@ import java.util.Map;
  */
 @Service
 public class NotificationService {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
 
     private final SmsSender smsSender;
     private final EmailSender emailSender;
@@ -380,12 +384,17 @@ public class NotificationService {
      * ({@code /i/{token}}) where the full document lives. Anything richer
      * (line-item breakdown, PDF attachment) would duplicate what the
      * link already shows and bloat the message size.
+     *
+     * <p>Also accepts the tenant's brand data ({@code tenantLogoUrl},
+     * {@code tenantPrimaryColor}) so the email template can show the
+     * tenant's own logo and accent colour rather than just Conddo's.
      */
     public void sendInvoiceEmail(String toEmail, String customerName,
                                   String businessName, String invoiceNumber,
                                   String totalDisplay, String dueDateDisplay,
                                   String publicUrl, String notes,
-                                  String tenantPhone, String tenantEmail) {
+                                  String tenantPhone, String tenantEmail,
+                                  String tenantLogoUrl, String tenantPrimaryColor) {
         String subject = "Invoice " + safe(invoiceNumber) + " — " + safe(businessName);
         String text = "Hi " + safe(customerName) + ",\n\n"
                 + safe(businessName) + " sent you invoice " + safe(invoiceNumber) + ".\n\n"
@@ -400,16 +409,19 @@ public class NotificationService {
                 + (tenantEmail == null || tenantEmail.isBlank() ? ""
                         : "  Email: " + tenantEmail + "\n")
                 + "\nSent via Conddo.";
-        String html = templates.render("invoice-share.html", Map.of(
-                "CUSTOMER_NAME",  safe(customerName),
-                "BUSINESS_NAME",  safe(businessName),
-                "INVOICE_NUMBER", safe(invoiceNumber),
-                "TOTAL_DISPLAY",  safe(totalDisplay),
-                "DUE_DATE",       safe(dueDateDisplay),
-                "PUBLIC_URL",     safe(publicUrl),
-                "NOTES",          safe(notes),
-                "TENANT_PHONE",   safe(tenantPhone),
-                "TENANT_EMAIL",   safe(tenantEmail)));
+        Map<String, String> invoiceVars = new java.util.HashMap<>();
+        invoiceVars.put("CUSTOMER_NAME",  safe(customerName));
+        invoiceVars.put("BUSINESS_NAME",  safe(businessName));
+        invoiceVars.put("INVOICE_NUMBER", safe(invoiceNumber));
+        invoiceVars.put("TOTAL_DISPLAY",  safe(totalDisplay));
+        invoiceVars.put("DUE_DATE",       safe(dueDateDisplay));
+        invoiceVars.put("PUBLIC_URL",     safe(publicUrl));
+        invoiceVars.put("NOTES",          safe(notes));
+        invoiceVars.put("TENANT_PHONE",   safe(tenantPhone));
+        invoiceVars.put("TENANT_EMAIL",   safe(tenantEmail));
+        invoiceVars.put("TENANT_LOGO_URL", safe(tenantLogoUrl));
+        invoiceVars.put("PRIMARY_COLOR",  safe(tenantPrimaryColor));
+        String html = templates.render("invoice-share.html", invoiceVars);
         if (html.isBlank()) {
             emailSender.send(toEmail, subject, text);
         } else {
@@ -421,12 +433,17 @@ public class NotificationService {
      * Receipt email — fires automatically when an invoice flips to
      * {@code paid} (manual mark or gateway webhook). Different template
      * + green PAID stamp instead of the invoice's amber pending block.
+     *
+     * <p>Also accepts the tenant's brand data ({@code tenantLogoUrl},
+     * {@code tenantPrimaryColor}) so the receipt email can show the
+     * tenant's own logo and accent colour.
      */
     public void sendInvoiceReceiptEmail(String toEmail, String customerName,
                                          String businessName, String invoiceNumber,
                                          String totalDisplay, String paidDateDisplay,
                                          String paidMethod, String publicUrl,
-                                         String tenantPhone, String tenantEmail) {
+                                         String tenantPhone, String tenantEmail,
+                                         String tenantLogoUrl, String tenantPrimaryColor) {
         String subject = "Receipt " + safe(invoiceNumber) + " — " + safe(businessName);
         String text = "Hi " + safe(customerName) + ",\n\n"
                 + "Thanks — we received your payment of " + safe(totalDisplay)
@@ -442,20 +459,62 @@ public class NotificationService {
                 + (tenantEmail == null || tenantEmail.isBlank() ? ""
                         : "  Email: " + tenantEmail + "\n")
                 + "\nSent via Conddo.";
-        String html = templates.render("invoice-receipt.html", Map.of(
-                "CUSTOMER_NAME",  safe(customerName),
-                "BUSINESS_NAME",  safe(businessName),
-                "INVOICE_NUMBER", safe(invoiceNumber),
-                "TOTAL_DISPLAY",  safe(totalDisplay),
-                "PAID_DATE",      safe(paidDateDisplay),
-                "PAID_METHOD",    safe(paidMethod),
-                "PUBLIC_URL",     safe(publicUrl),
-                "TENANT_PHONE",   safe(tenantPhone),
-                "TENANT_EMAIL",   safe(tenantEmail)));
+        Map<String, String> receiptVars = new java.util.HashMap<>();
+        receiptVars.put("CUSTOMER_NAME",  safe(customerName));
+        receiptVars.put("BUSINESS_NAME",  safe(businessName));
+        receiptVars.put("INVOICE_NUMBER", safe(invoiceNumber));
+        receiptVars.put("TOTAL_DISPLAY",  safe(totalDisplay));
+        receiptVars.put("PAID_DATE",      safe(paidDateDisplay));
+        receiptVars.put("PAID_METHOD",    safe(paidMethod));
+        receiptVars.put("PUBLIC_URL",     safe(publicUrl));
+        receiptVars.put("TENANT_PHONE",   safe(tenantPhone));
+        receiptVars.put("TENANT_EMAIL",   safe(tenantEmail));
+        receiptVars.put("TENANT_LOGO_URL", safe(tenantLogoUrl));
+        receiptVars.put("PRIMARY_COLOR",  safe(tenantPrimaryColor));
+        String html = templates.render("invoice-receipt.html", receiptVars);
         if (html.isBlank()) {
             emailSender.send(toEmail, subject, text);
         } else {
             emailSender.sendHtml(toEmail, subject, html, text);
+        }
+    }
+
+    /**
+     * Payment received alert — sent to the tenant (business owner) when a
+     * payment comes in via webhook or manual mark-paid. Fires whether the
+     * payment was from an invoice, payment link, or order. Best-effort:
+     * a delivery failure is logged but never thrown (the payment is already
+     * recorded).
+     */
+    public void sendPaymentReceivedAlert(String toEmail, String businessName,
+                                          String customerName, String totalDisplay,
+                                          String invoiceNumber, String paidDateDisplay,
+                                          String paidMethod, String dashboardUrl) {
+        if (toEmail == null || toEmail.isBlank()) return;
+        String subject = "✅ Payment received — " + safe(totalDisplay) + " for " + safe(businessName);
+        String text = "Hi " + safe(businessName) + ",\n\n"
+                + safe(customerName) + " just paid you " + safe(totalDisplay)
+                + " for invoice " + safe(invoiceNumber) + ".\n\n"
+                + "  Paid on: " + safe(paidDateDisplay) + "\n"
+                + (paidMethod == null || paidMethod.isBlank() ? "" : "  Method:  " + paidMethod + "\n")
+                + "\nView it on your dashboard: " + dashboardUrl + "\n\n"
+                + "— Conddo";
+        String html = templates.render("payment-received.html", Map.of(
+                "BUSINESS_NAME",  safe(businessName),
+                "CUSTOMER_NAME",  safe(customerName),
+                "TOTAL_DISPLAY",  safe(totalDisplay),
+                "INVOICE_NUMBER", safe(invoiceNumber),
+                "PAID_DATE",      safe(paidDateDisplay),
+                "PAID_METHOD",    safe(paidMethod),
+                "DASHBOARD_URL",  safe(dashboardUrl)));
+        try {
+            if (html.isBlank()) {
+                emailSender.send(toEmail, subject, text);
+            } else {
+                emailSender.sendHtml(toEmail, subject, html, text);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Payment-received email failed for {}: {}", toEmail, ex.getMessage());
         }
     }
 

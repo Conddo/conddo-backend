@@ -223,6 +223,30 @@ public class InvoiceService {
         invoice.markPaidManually(method, OffsetDateTime.now());
         invoice = invoiceRepo.save(invoice);
         maybeSendReceiptEmail(invoice);
+        // Notify the tenant that payment was received
+        sendPaymentAlertToTenant(invoice, method);
+        return invoice;
+    }
+
+    /**
+     * Mark an invoice paid by a matched inbound transfer (the
+     * Moniepoint/OPay model). Same side-effects as
+     * {@link #markPaidManually} — receipt email + tenant alert — but
+     * stores the provider's transaction reference on the invoice so
+     * the receipt shows where the money came from. Idempotent for
+     * already-paid invoices: the transfer match is recorded by the
+     * caller without re-firing the emails.
+     */
+    @Transactional
+    public Invoice markPaidByTransfer(UUID id, String providerReference, OffsetDateTime at) {
+        tenantSession.bind();
+        Invoice invoice = require(id);
+        if (!Invoice.STATUS_PAID.equals(invoice.getStatus())) {
+            invoice.markPaidByGateway("transfer", providerReference, at);
+            invoice = invoiceRepo.save(invoice);
+            maybeSendReceiptEmail(invoice);
+            sendPaymentAlertToTenant(invoice, "transfer");
+        }
         return invoice;
     }
 
@@ -253,7 +277,9 @@ public class InvoiceService {
                     publicUrlFor(invoice),
                     invoice.getNotes(),
                     tenant.getContactPhone(),
-                    tenant.getContactEmail());
+                    tenant.getContactEmail(),
+                    tenant.getLogoUrl(),
+                    tenant.getPrimaryColor());
         } catch (RuntimeException ex) {
             log.error("Invoice email send failed for {}: {}",
                     invoice.getInvoiceNumber(), ex.getMessage());
@@ -279,9 +305,33 @@ public class InvoiceService {
                     invoice.getPaidMethod() == null ? "" : invoice.getPaidMethod(),
                     publicUrlFor(invoice),
                     tenant.getContactPhone(),
-                    tenant.getContactEmail());
+                    tenant.getContactEmail(),
+                    tenant.getLogoUrl(),
+                    tenant.getPrimaryColor());
         } catch (RuntimeException ex) {
             log.error("Receipt email send failed for {}: {}",
+                    invoice.getInvoiceNumber(), ex.getMessage());
+        }
+    }
+
+    /** Send a payment-received alert to the tenant's contact email. */
+    private void sendPaymentAlertToTenant(Invoice invoice, String paidMethod) {
+        Tenant tenant = tenantRepo.findById(invoice.getTenantId()).orElse(null);
+        if (tenant == null) return;
+        String toEmail = tenant.getContactEmail();
+        if (toEmail == null || toEmail.isBlank()) return;
+        try {
+            notificationService.sendPaymentReceivedAlert(
+                    toEmail,
+                    tenant.getName(),
+                    invoice.getCustomerName(),
+                    formatNaira(invoice.getTotalKobo()),
+                    invoice.getInvoiceNumber(),
+                    invoice.getPaidAt() == null ? "" : HUMAN_DATE.format(invoice.getPaidAt().toLocalDate()),
+                    paidMethod == null ? "" : paidMethod,
+                    appBaseUrl + "/invoices/" + invoice.getId());
+        } catch (RuntimeException ex) {
+            log.error("Payment alert email to tenant failed for {}: {}",
                     invoice.getInvoiceNumber(), ex.getMessage());
         }
     }

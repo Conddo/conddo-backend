@@ -21,7 +21,13 @@
 
           <tr>
             <td align="left" style="padding:4px 8px 24px;">
+              <!-- Tenant logo (falls back to Conddo logo when not set) -->
+              {{#TENANT_LOGO_URL}}
+              <img src="{{TENANT_LOGO_URL}}" alt="{{BUSINESS_NAME}}" height="40" style="height:40px; width:auto; max-height:40px; border:0; display:block; margin-bottom:8px;" />
+              {{/TENANT_LOGO_URL}}
+              {{^TENANT_LOGO_URL}}
               <img src="{{LOGO_URL}}" alt="conddo.io" height="28" style="height:28px; width:auto; border:0; display:block;" />
+              {{/TENANT_LOGO_URL}}
             </td>
           </tr>
 
@@ -70,7 +76,7 @@
                     </v:roundrect>
                     <![endif]-->
                     <!--[if !mso]><!-- -->
-                    <a href="{{PUBLIC_URL}}" style="display:inline-block; background-color:#7C5CBF; color:#FFFFFF; font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; text-decoration:none; padding:14px 28px; border-radius:10px;">View invoice</a>
+                    <a href="{{PUBLIC_URL}}" style="display:inline-block; background-color:{{PRIMARY_COLOR}}; color:#FFFFFF; font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; text-decoration:none; padding:14px 28px; border-radius:10px;">View invoice</a>
                     <!--<![endif]-->
                   </td>
                 </tr>

@@ -89,6 +89,26 @@ conddo:
       api-key: ${CONDDO_ROUTEPAY_API_KEY:}
       base-url: ${CONDDO_ROUTEPAY_BASE_URL:https://api.routepay.com}
 
+  # Connected accounts (V77) — the Moniepoint/OPay model. Each tenant brings
+  # their OWN merchant credentials (there is no platform-level key), so the
+  # gateways take the tenant's key per call. Webhook secrets are platform-
+  # level: set them in the provider dashboard pointing at
+  # https://api.getconddo.com/api/v1/webhooks/integrations/{provider}; blank
+  # secrets reject every webhook (no accidental unsigned processing) and the
+  # poller below is the always-on ingestion path.
+  # Credentials are encrypted at rest with CONDDO_INTEGRATIONS_ENCRYPTION_KEY
+  # (falls back to CONDDO_SOCIAL_TOKEN_KEY; generate: openssl rand -base64 32).
+  integrations:
+    # Poller interval for pulling paid transactions from connected accounts.
+    sync-interval-ms: ${CONDDO_INTEGRATIONS_SYNC_INTERVAL_MS:300000}
+    encryption-key: ${CONDDO_INTEGRATIONS_ENCRYPTION_KEY:}
+    moniepoint:
+      base-url: ${CONDDO_MONIEPOINT_BASE_URL:https://pos.moniepoint.com}
+      webhook-secret: ${CONDDO_MONIEPOINT_WEBHOOK_SECRET:}
+    opay:
+      base-url: ${CONDDO_OPAY_BASE_URL:https://opaycheckout.com/api/v3}
+      webhook-secret: ${CONDDO_OPAY_WEBHOOK_SECRET:}
+
   # Media storage via Cloudinary (§11.12). Upload returns a permanent, public,
   # CDN-backed secure_url (embedded in the dashboard, public website + emails).
   cloudinary:
