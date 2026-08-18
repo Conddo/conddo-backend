@@ -119,7 +119,8 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(errorResponder)
                         .accessDeniedHandler(errorResponder))
-                .addFilterBefore(new AuthRateLimitFilter(rateLimiter), AuditContextFilter.class)
+                .addFilterBefore(new AuditContextFilter(), AuthRateLimitFilter.class)
+                .addFilterBefore(new AuthRateLimitFilter(rateLimiter), BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(new JwtTenantContextFilter(), BearerTokenAuthenticationFilter.class);
         return http.build();
     }
