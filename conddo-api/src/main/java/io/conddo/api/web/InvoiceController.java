@@ -1,6 +1,5 @@
 package io.conddo.api.web;
 
-import io.conddo.api.billing.RequiresFeature;
 import io.conddo.core.common.ApiResponse;
 import io.conddo.core.domain.Invoice;
 import io.conddo.core.domain.InvoiceLine;
@@ -30,13 +29,14 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Tenant-side invoice CRUD. Growth-gated via {@code @RequiresFeature}.
+ * Tenant-side invoice CRUD. Available to every paying tenant — no plan
+ * gate. Invoicing is a core value prop of the owner-led SMB product,
+ * gating it behind Growth contradicted the positioning (2026-08-18).
  * Read is open to any staff role with orders read; write is owner-only
  * because invoice numbering + payment status touch accounting.
  */
 @RestController
 @RequestMapping("/api/v1/invoices")
-@RequiresFeature(value = "invoicing", requiredPlan = "growth")
 public class InvoiceController {
 
     private static final String READ = "@staffAccess.canRead('orders')";

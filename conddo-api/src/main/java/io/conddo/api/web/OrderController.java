@@ -43,11 +43,13 @@ import java.util.UUID;
  * line items, payments, activity, reminders. Tenant comes from the JWT (RLS);
  * reads are open to any staff role, writes default to TENANT_ADMIN / SUPER_ADMIN.
  * Pipeline-stage management lives in {@link OrderStageController}.
+ *
+ * <p>Available to every paying tenant — no plan gate. Order management is
+ * a core value prop of the owner-led SMB product; gating it behind
+ * Growth contradicted the positioning (2026-08-18).
  */
 @RestController
 @RequestMapping("/api/v1/orders")
-@io.conddo.api.billing.RequiresFeature(value = "order_management",
-        requiredPlan = "Growth", requiredPlanPrice = 45000)
 public class OrderController {
 
     private static final String READ = "@staffAccess.canRead('orders')";
