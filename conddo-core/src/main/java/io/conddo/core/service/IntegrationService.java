@@ -116,6 +116,41 @@ public class IntegrationService {
         return IntegrationView.of(integrations.save(row));
     }
 
+    /**
+     * Store a tenant's own Paystack secret key so customer payments can
+     * route to their Paystack merchant account. Distinct from platform
+     * billing (CONDDO_PAYSTACK_SECRET_KEY), which lives in env config.
+     *
+     * <p>No live verify — Paystack's ping shape is simple and we defer
+     * it to first-charge time. Format check only: must start with
+     * {@code sk_live_} or {@code sk_test_} so fat-fingered pastes fail
+     * loudly instead of silently storing garbage.
+     */
+    @Transactional
+    public IntegrationView connectPaystack(String secretKey) {
+        tenantSession.bind();
+        String key = secretKey == null ? "" : secretKey.trim();
+        if (!key.startsWith("sk_live_") && !key.startsWith("sk_test_")) {
+            throw new IllegalArgumentException(
+                    "secretKey must be a Paystack key (sk_live_... or sk_test_...) from the Paystack dashboard");
+        }
+
+        UUID tenantId = TenantContext.require();
+        TenantIntegration row = integrations
+                .findByTenantIdAndProvider(tenantId, TenantIntegration.PROVIDER_PAYSTACK)
+                .orElseGet(() -> new TenantIntegration(tenantId, TenantIntegration.PROVIDER_PAYSTACK));
+
+        row.setCredentials(credentialsJson("secretKey", cipher.encrypt(key)));
+        String ref = sha256Hex(key);
+        // No live-verified business snapshot yet — populate the label so
+        // the account list has something to render, mark verified so the
+        // status pill is green, and let first-charge time correct the
+        // business name if Paystack disagrees.
+        String label = key.startsWith("sk_test_") ? "Paystack (test)" : "Paystack";
+        row.markVerified(label, null, null, null, null, null, ref);
+        return IntegrationView.of(integrations.save(row));
+    }
+
     // ----- read --------------------------------------------------------------
 
     /** The tenant's connected accounts + money-feed stats. */

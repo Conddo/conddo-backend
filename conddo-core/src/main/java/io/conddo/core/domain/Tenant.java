@@ -165,6 +165,14 @@ public class Tenant {
         return name;
     }
 
+    /** Update the business name shown on the dashboard, invoices, and public
+     *  site. Ignores blank input — a blank name is never a valid rename. */
+    public void rename(String newName) {
+        if (newName != null && !newName.isBlank()) {
+            this.name = newName.trim();
+        }
+    }
+
     public String getSlug() {
         return slug;
     }

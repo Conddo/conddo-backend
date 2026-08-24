@@ -5,11 +5,18 @@ import io.conddo.core.common.ApiResponse;
 import io.conddo.core.credits.CreditService;
 import io.conddo.core.domain.DailyBrief;
 import io.conddo.core.service.DailyBriefService;
+import io.conddo.core.service.MeProfileService;
 import io.conddo.core.service.MeService;
 import io.conddo.core.tenant.TenantContext;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,12 +34,15 @@ import java.util.UUID;
 public class MeController {
 
     private final MeService meService;
+    private final MeProfileService profileService;
     private final CreditService creditService;
     private final DailyBriefService dailyBriefService;
 
-    public MeController(MeService meService, CreditService creditService,
+    public MeController(MeService meService, MeProfileService profileService,
+                        CreditService creditService,
                         DailyBriefService dailyBriefService) {
         this.meService = meService;
+        this.profileService = profileService;
         this.creditService = creditService;
         this.dailyBriefService = dailyBriefService;
     }
@@ -42,6 +52,29 @@ public class MeController {
         MeService.Identity identity = meService.current(UUID.fromString(jwt.getSubject()));
         return ApiResponse.ok(MeResponse.from(identity.user(), identity.tenant()));
     }
+
+    /** Update full name and/or business name. Both fields optional — a
+     *  caller can send either or both. Returns the same shape as GET /me. */
+    @PatchMapping
+    public ApiResponse<MeResponse> update(@Valid @RequestBody UpdateProfileRequest req,
+                                          @AuthenticationPrincipal Jwt jwt) {
+        MeService.Identity identity = profileService.updateProfile(
+                UUID.fromString(jwt.getSubject()), req.fullName(), req.businessName());
+        return ApiResponse.ok(MeResponse.from(identity.user(), identity.tenant()));
+    }
+
+    /** Password change. Requires current password to prevent stolen-JWT
+     *  from silently rotating credentials. Returns 204 on success. */
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest req,
+                                               @AuthenticationPrincipal Jwt jwt) {
+        profileService.changePassword(
+                UUID.fromString(jwt.getSubject()), req.currentPassword(), req.newPassword());
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    public record UpdateProfileRequest(String fullName, String businessName) {}
+    public record ChangePasswordRequest(String currentPassword, String newPassword) {}
 
     @GetMapping("/credits")
     public ApiResponse<CreditService.Summary> credits() {

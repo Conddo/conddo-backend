@@ -30,6 +30,9 @@ public class TenantIntegration {
 
     public static final String PROVIDER_MONIEPOINT = "moniepoint";
     public static final String PROVIDER_OPAY = "opay";
+    /** Tenant's own Paystack secret. Separate from the platform's
+     *  Paystack key which handles Conddo subscription billing. */
+    public static final String PROVIDER_PAYSTACK = "paystack";
 
     public static final String STATUS_CONNECTED = "connected";
     public static final String STATUS_ERROR = "error";

@@ -55,6 +55,11 @@ public class IntegrationController {
         return ApiResponse.ok(service.connectOpay(req.merchantId(), req.privateKey(), req.publicKey()));
     }
 
+    @PostMapping("/paystack")
+    public ApiResponse<IntegrationView> connectPaystack(@Valid @RequestBody PaystackRequest req) {
+        return ApiResponse.ok(service.connectPaystack(req.secretKey()));
+    }
+
     @DeleteMapping("/{provider}")
     public ApiResponse<IntegrationView> disconnect(@PathVariable String provider) {
         return ApiResponse.ok(service.disconnect(provider));
@@ -70,4 +75,6 @@ public class IntegrationController {
             @NotBlank String merchantId,
             @NotBlank String privateKey,
             @NotBlank String publicKey) {}
+
+    public record PaystackRequest(@NotBlank String secretKey) {}
 }
