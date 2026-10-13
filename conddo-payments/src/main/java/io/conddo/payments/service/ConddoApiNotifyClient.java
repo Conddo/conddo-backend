@@ -44,29 +44,23 @@ public class ConddoApiNotifyClient {
 
     /**
      * Notify conddo-api that a payment landed (or failed). Idempotent on their
-     * side. V2 added the {@code creativeRequestId} + {@code brandPackageSubscriptionId}
-     * + {@code paymentReference} fields — conddo-api uses {@code paymentReference}
-     * to look up creative-service / brand-package rows (V1 only had orderId/
-     * bookingId; that path still works for back-compat).
+     * side.
      */
     public void notifyPayment(UUID tenantId, UUID paymentId, String status,
                               UUID orderId, UUID bookingId,
-                              UUID creativeRequestId, UUID brandPackageSubscriptionId,
                               String paymentReference, long amountKobo) {
         if (!configured) {
             return;
         }
         try {
-            // LinkedHashMap (not Map.of) because at most one of the four target
-            // ids is set per row; Map.of refuses null values.
+            // LinkedHashMap (not Map.of) because at most one target id is set
+            // per row; Map.of refuses null values.
             java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
             body.put("tenantId", tenantId);
             body.put("paymentId", paymentId);
             body.put("status", status);
             body.put("orderId", orderId);
             body.put("bookingId", bookingId);
-            body.put("creativeRequestId", creativeRequestId);
-            body.put("brandPackageSubscriptionId", brandPackageSubscriptionId);
             body.put("paymentReference", paymentReference);
             body.put("amountKobo", amountKobo);
             restClient.post()

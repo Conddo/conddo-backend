@@ -5,15 +5,15 @@ else hangs off: **multi-tenancy enforced by PostgreSQL Row Level Security**.
 
 > 👋 **New here?** Start with [**REQUIREMENTS.md**](./REQUIREMENTS.md) — the
 > front-door spec covering what Conddo.io is, who it's for, the full feature
-> surface across both planes (tenant platform + Conddo Studio), and a map of
-> the rest of the docs. This README is the operator's guide to the Phase 0
-> backend specifically.
+> surface of the tenant platform, and a map of the rest of the docs. This
+> README is the operator's guide to the Phase 0 backend specifically.
 
 ```
 backend/                  (this repo — conddo-backend)
   pom.xml                 parent (multi-module)
   conddo-core/            Core Platform — tenancy, persistence, domain, services
   conddo-api/             Spring Boot app — REST API, config, Flyway migrations
+  conddo-payments/        Payments service — RoutePay integration, payments schema
   infra/                  Docker Compose dev stack (Postgres 16, Redis 7, MinIO)
 ```
 

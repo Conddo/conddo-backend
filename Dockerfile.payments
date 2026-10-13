@@ -1,8 +1,7 @@
 # ----------------------------- build stage -----------------------------
 # Builds the runnable conddo-payments jar (the standalone payments service
 # wrapping RoutePay). Tests are NOT run here (Testcontainers needs a Docker
-# daemon); CI runs them. Mirrors Dockerfile.studio so Render can build all
-# three services off the same monorepo with per-service dockerfilePath.
+# daemon); CI runs them.
 FROM eclipse-temurin:17-jdk-jammy AS build
 WORKDIR /workspace
 
@@ -13,7 +12,6 @@ COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY conddo-core/pom.xml conddo-core/pom.xml
 COPY conddo-api/pom.xml conddo-api/pom.xml
-COPY conddo-studio/pom.xml conddo-studio/pom.xml
 COPY conddo-payments/pom.xml conddo-payments/pom.xml
 RUN chmod +x mvnw && ./mvnw -B -pl conddo-payments dependency:go-offline -DskipTests || true
 

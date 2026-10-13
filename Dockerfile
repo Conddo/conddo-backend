@@ -6,13 +6,11 @@ WORKDIR /workspace
 
 # Module descriptors + wrapper first, so dependency download is cached across
 # source-only changes. All module poms are copied so the reactor can resolve the
-# parent's <modules> list — conddo-studio is NOT built here (-pl conddo-api -am
-# excludes it), but its pom must exist or Maven fails reading the aggregator.
+# parent's <modules> list.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY conddo-core/pom.xml conddo-core/pom.xml
 COPY conddo-api/pom.xml conddo-api/pom.xml
-COPY conddo-studio/pom.xml conddo-studio/pom.xml
 COPY conddo-payments/pom.xml conddo-payments/pom.xml
 RUN chmod +x mvnw && ./mvnw -B -pl conddo-api -am dependency:go-offline -DskipTests || true
 

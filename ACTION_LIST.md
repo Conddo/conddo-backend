@@ -5,8 +5,7 @@
 > exists, how it works, the rules you must follow, and what to build next. The
 > product spec (PRD) lives **outside this repo** (`../conddo_prd_v1.3.docx`,
 > confidential), so the parts you need are summarised here. Current spec is
-> **v1.3**, which added §22 (Conddo Studio) and §23 (AI Assistant Layer) —
-> see the roadmap in §7.
+> **v1.3**, which added §23 (AI Assistant Layer) — see the roadmap in §7.
 
 ---
 
@@ -235,8 +234,8 @@ curl -s localhost:8080/api/v1/customers -H "X-Tenant-Id: $B"   # -> only Bob
 
 This is your roadmap. Each item notes the PRD section and a definition of done.
 **Items 1–7 are Phase 1 — build these now, top-down; auth unblocks the most.**
-Items 8–9 are later phases (newly specified in PRD v1.3); they're captured here
-so the scope and key data model are known — **do not build them yet.**
+Item 9 is a later phase (newly specified in PRD v1.3); it's captured here
+so the scope is known — **do not build it yet.**
 
 > 📋 **Per-module dashboard API contract is in §11.** The frontend dashboard
 > module is being built screen-by-screen (Next.js, other repo). §11 audits every
@@ -266,8 +265,7 @@ and where they live:
   **SUPER_ADMIN is internal staff** — it authenticates via `/auth/staff/login`,
   gets a tenant-less token, and scopes to a tenant per request via
   `X-Act-As-Tenant` (honoured only for SUPER_ADMIN). No BYPASSRLS, no owner
-  datasource — RLS is always enforced. The Conddo Studio roles (§22) slot into
-  `staff_users`/`InternalRole` when built. **Phase-1 staff get an access token
+  datasource — RLS is always enforced. **Phase-1 staff get an access token
   only; staff refresh tokens are deferred to Phase 3.**
 - **Password reset:** `/auth/forgot-password` + `/auth/reset-password`; delivery
   via `NotificationPort` — a logging **stub** until item 5. Reset revokes all of
@@ -293,16 +291,13 @@ Original requirements (kept for reference; all satisfied):
   `tenant_id` claim (in a filter that runs after authentication), replacing the
   `X-Tenant-Id` placeholder. `SUPER_ADMIN` needs a bypass story (it has no single
   tenant) — design it (e.g., a role with `BYPASSRLS`, or explicit tenant selection).
-- **⚠️ Two role axes — decide this NOW, it shapes the schema (PRD v1.3 §22):**
-  the four roles above are *tenant-facing*. v1.3 §22 (Conddo Studio) introduces
-  *internal Handel Cores staff* roles — **Website Developer, QA Reviewer,
-  Production Team Lead** — who are **not tenant-scoped** (they work across all
-  tenants' website jobs). Do **not** shoehorn them into the `users` table with a
-  nullable `tenant_id`. Recommended: a separate `staff_users` table + an
-  `internal_role` enum, authenticated through the same JWT machinery but never
-  setting `app.tenant_id`. This keeps `users` + RLS cleanly tenant-scoped and
-  the internal tool isolated. Getting this right now avoids a painful migration
-  when Conddo Studio (Phase 3) lands.
+- **⚠️ Two role axes — decide this NOW, it shapes the schema:** the four roles
+  above are *tenant-facing*. The only internal role is `SUPER_ADMIN` (platform
+  admin), which is **not tenant-scoped**. Do **not** shoehorn internal staff
+  into the `users` table with a nullable `tenant_id`. Recommended: a separate
+  `staff_users` table + an `internal_role` enum, authenticated through the same
+  JWT machinery but never setting `app.tenant_id`. This keeps `users` + RLS
+  cleanly tenant-scoped and the internal tool isolated.
 - **Method-level security:** annotate service methods with required roles
   (`@PreAuthorize`), not just controllers (PRD §6.2).
 - _Done when:_ a user logs in, gets tokens, calls `/api/v1/customers` with no
@@ -490,14 +485,14 @@ a valid session — never touching a password.
 - Background jobs (persisted, retried) and an internal event bus (Redis Pub/Sub)
   so modules stay decoupled.
 
-### 7b. Social integrations (via Ayrshare) + Creative services + Brand packages — `conddo-social` (or in-API module) ⬜ TODO (P1 for V1.1)
+### 7b. Social integrations (via Ayrshare) — `conddo-social` (or in-API module) ⬜ TODO (P1 for V1.1)
 **Spec**: [SOCIAL_AND_CREATIVE_SERVICES_SPEC.md](./SOCIAL_AND_CREATIVE_SERVICES_SPEC.md)
-— full vision (Ayrshare gateway integration, scheduling, media library,
-creative_service_requests routed to Studio as jobs, monthly brand_package
-subscriptions). FE shipped the "Connected Accounts" shell on 2026-06-05
-with `pending_approval` states for every provider; flipping a provider's
-status to live on the BE swaps the disabled chip → "Connect" button that
-opens Ayrshare's hosted-connect dialog.
+— the social-marketing surface (Ayrshare gateway integration, scheduling,
+media library, webhooks). The Creative Services marketplace and Brand
+Packages features have been removed. FE shipped the "Connected Accounts"
+shell on 2026-06-05 with `pending_approval` states for every provider;
+flipping a provider's status to live on the BE swaps the disabled chip →
+"Connect" button that opens Ayrshare's hosted-connect dialog.
 
 **Vendor decision: Ayrshare API gateway** ([ayrshare.com](https://www.ayrshare.com)).
 One integration covers Facebook, Instagram, LinkedIn, X, TikTok, YouTube,
@@ -510,8 +505,7 @@ just needs to drop it into Render's **`conddo-backend` service** as
 All three Ayrshare-related vars (`AYRSHARE_API_KEY`,
 `AYRSHARE_WEBHOOK_SECRET`, `CONDDO_SOCIAL_TOKEN_KEY`) belong on
 conddo-backend — the shape is declared in [render.yaml](./render.yaml)
-under that service. Not on conddo-studio or conddo-payments; neither
-calls Ayrshare. No Meta or LinkedIn developer app to register on our
+under that service. No Meta or LinkedIn developer app to register on our
 side, no OAuth code paths to write.
 
 **Phase 1 BE work for this sprint** (the explicit handoff):
@@ -535,9 +529,8 @@ side, no OAuth code paths to write.
    connect-link endpoint.
 
 Phase 2 onward: scheduling via Ayrshare's `scheduleDate` param +
-webhook-driven status updates, media library, creative_service_requests
-routed to Studio, brand_package monthly subscriptions (all detailed in
-spec §3-§6). Phase 4: analytics rollup using Ayrshare's per-post analytics.
+webhook-driven status updates and the media library (detailed in spec
+§3-§4). Phase 3: analytics rollup using Ayrshare's per-post analytics.
 
 ### 7. Billing (PRD §14)
 **Spec**: [BILLING_TIERS_SPEC.md](./BILLING_TIERS_SPEC.md) — Launcher / Growth
@@ -553,8 +546,8 @@ FE shipped 2026-06-05; this BE work unlocks real billing.
 ### 7a. Payments — `conddo-payments` standalone web service  ⬜ TODO (P0 for V1 launch)
 
 **Architecture decision (2026-06-04, clarified):** Payments is its **own
-standalone web service** (own deployment, own URL, own Postgres schema).
-Same shape as `conddo-studio`:
+standalone web service** (own deployment, own URL, own Postgres schema) —
+one of the two deployable backend services, alongside `conddo-api`:
 
 - Separate Spring Boot module (`conddo-payments`), separate Render web service
   at `https://conddo-payments.onrender.com` (URL becomes the new
@@ -562,8 +555,7 @@ Same shape as `conddo-studio`:
 - Separate Postgres schema (`payments.*`) — owned by `conddo_owner` role,
   same Postgres instance.
 - Communicates with `conddo-api` over HTTP with a shared service token
-  (`X-Payments-Service-Token`), mirroring the `conddo-api ↔ conddo-studio`
-  seam already in place for the website-build hand-off.
+  (`X-Payments-Service-Token`).
 - Talks to RoutePay externally; everything Conddo-side is one service that
   can scale, deploy, and fail independently of the platform API.
 
@@ -601,8 +593,7 @@ This is significantly better than the "platform-merchant float" pattern:
 #### Signup → RoutePay sub-account creation
 
 When a tenant signs up, the existing `TenantActivatedEvent`
-(AFTER_COMMIT, `@Async` in `conddo-api`) gets a second handler in addition
-to the Studio job hand-off:
+(AFTER_COMMIT, `@Async` in `conddo-api`) gets a handler:
 
 ```java
 @Async
@@ -786,13 +777,11 @@ POST /api/payments/webhook
 
 The Conddo-app FE talks to `conddo-payments` **directly** — not via a
 proxy through `conddo-api`. It gets a different env var
-(`NEXT_PUBLIC_PAYMENTS_API_URL`), same pattern as `NEXT_PUBLIC_STUDIO_API_URL`
-which is already in place for the Studio FE.
+(`NEXT_PUBLIC_PAYMENTS_API_URL`).
 
 ```
 NEXT_PUBLIC_API_URL=https://conddo-backend.onrender.com         # tenant API
 NEXT_PUBLIC_PAYMENTS_API_URL=https://conddo-payments.onrender.com  # payments
-NEXT_PUBLIC_STUDIO_API_URL=https://conddo-studio.onrender.com    # studio (FE separate)
 ```
 
 The FE's `lib/api/payments.ts` keeps the existing **read** endpoints
@@ -861,57 +850,24 @@ in parallel.
 
 ---
 
-> **Items 8–9 below are LATER PHASES — newly specified in PRD v1.3. Do not build
-> them during Phase 1. They are documented so the data model and scope are known
-> and so the Phase 1 auth/role design accounts for them.**
+> **Item 9 below is a LATER PHASE — newly specified in PRD v1.3. Do not build
+> it during Phase 1. It is documented so the scope is known.**
 
-### 8. Conddo Studio — internal build tool (PRD v1.3 §22, build "Phase 3")
-The internal web app the salaried production team uses to build every customer
-website. **Internal staff only — not tenant-scoped** (see the two-role-axis note
-in item 1). It does NOT touch tenant RLS.
-- **Actors:** Website Developer, QA Reviewer, Production Team Lead, Super Admin
-  (the `internal_role` axis).
-- **Job state machine — 8 states, in order:**
-  `QUEUED → ASSIGNED → IN_PROGRESS → SUBMITTED → IN_REVIEW → REVISION → APPROVED → LIVE`.
-  Model as a `website_jobs` table + a `job_events` history table (who/when/state
-  transition) for the audit trail and SLA tracking.
-- **Likely tables:** `website_jobs` (business brief snapshot, vertical, plan tier,
-  assigned_developer, sla_deadline, state), `job_events`, `website_sections`
-  (per-job configured sections + chosen variant + content JSONB),
-  `qa_reviews` (checklist results, pass/return, feedback), `design_standard_library`.
-- **Surfaces:** developer dashboard/job queue (SLA Green/Amber/Red), read-only
-  business-brief panel, vertical-specific **section library** (3–4 variants each,
-  required vs optional fields), 3-panel build interface (brief | builder | live
-  preview at 1280/768/375), auto-applied **brand config**, **pre-submission
-  checklist** (blocking checks vs warnings), **QA review** split-screen, and the
-  **jobs board** with Team Lead assignment/capacity/performance tools.
-- **Note:** SLA timers/queue mechanics ride on the Phase-1 **job queue + Redis**
-  (item 6). Typography is fixed: Inter + Geist Mono (matches the landing brand).
-
-### 9. AI Assistant Layer (PRD v1.3 §23, cross-cutting)
-Six Claude-powered features inside Conddo Studio (1–5) and the tenant dashboard
-(6). **Human-in-the-loop is mandatory — AI only ever drafts; a developer/owner
-reviews and approves. Never auto-publish.**
-1. **Copy Generator** — drafts section copy from the business brief.
-2. **Layout Suggestion** — content-aware section ordering per vertical.
-3. **Image Ranker** — vision-based quality/relevance scoring of uploaded photos.
-4. **Colour Palette Generator** — WCAG-AA palette from the primary colour
-   (algorithm + model). (Mirrors the landing-page token system.)
-5. **Pre-submission QA Scanner** — catches what rule checks can't (template-y
-   copy, tone drift, facts inconsistent with the brief, generic CTAs).
-6. **Business Marketing Assistant** — captions / email / SMS / ad copy in the
-   tenant dashboard.
-- **Prompt design:** 4-layer system prompt (identity → copy guidelines incl. a
-  banned-AI-clichés list → vertical tone guide injected from config →
-  section-specific instructions), business brief as user context.
-- **Safeguards:** unedited AI copy is flagged in QA; generation logs stored per
-  job; model fallback degrades gracefully (Studio marks AI offline, build
-  continues, SLA clock does **not** pause).
-- **⚠️ Model IDs:** the PRD pins `claude-sonnet-4-20250514`, which is dated. When
-  we build this, target the **current Sonnet (`claude-sonnet-4-6`)** for text and
-  a current vision-capable model for the Image Ranker, and **use the `claude-api`
-  skill** so it ships with **prompt caching** (the 4-layer system prompt is a
-  perfect cache candidate) from day one.
+### 9. AI Assistant Layer (PRD v1.3 §23) — Business Marketing Assistant
+One Claude-powered feature remains relevant to this backend: the **Business
+Marketing Assistant** in the tenant dashboard — captions / email / SMS / ad
+copy. **Human-in-the-loop is mandatory — AI only ever drafts; the owner
+reviews and approves. Never auto-publish.** The Studio-side AI features (copy
+generator, layout suggestion, image ranker, palette generator, pre-submission
+QA scanner) were removed with Conddo Studio.
+- **Prompt design:** layered system prompt (identity → copy guidelines incl. a
+  banned-AI-clichés list → tone guide injected from config → task-specific
+  instructions), business context as user context.
+- **Safeguards:** unedited AI copy is flagged; generation logs stored; model
+  fallback degrades gracefully.
+- **⚠️ Model IDs:** target the **current Sonnet (`claude-sonnet-4-6`)** for text,
+  and **use the `claude-api` skill** so it ships with **prompt caching** from
+  day one.
 
 ---
 
@@ -1015,9 +971,9 @@ Recent Orders table; Website Status card; Today's Bookings; "New Order" CTA.
 
 ### 11.2 Website  — `/website` ⬜
 **Functionality:** live/in-progress status, subdomain + custom domain, traffic
-(visits/enquiries), configured sections (read-only — the site is built in Conddo
-Studio §8), request edits, connect custom domain (Scaler tier). Tenant side is mostly
-**read + request-changes**; the actual build lives in §8.
+(visits/enquiries), configured sections (read-only — the site is built by the
+production team), request edits, connect custom domain (Scaler tier). Tenant side
+is mostly **read + request-changes**; the actual build happens outside this API.
 
 **Integration spec**: [WEBSITE_INTEGRATION_SPEC.md](./WEBSITE_INTEGRATION_SPEC.md)
 covers the `tenant_sites` registration table, `X-Conddo-Site-Key` auth,
@@ -1031,8 +987,8 @@ unblocks real public traffic from tenant sites.
 |---|---|---|---|
 |🆕| GET | `/api/v1/website` | Site config: `{subdomain, customDomain, status, publishedAt}`. |
 |🆕| GET | `/api/v1/website/status` | `{state:'live'|'in_progress', domain, visitsToday, enquiries}`. |
-|🆕| GET | `/api/v1/website/sections` | Configured sections + content (read-only snapshot from Studio). |
-|🆕| POST | `/api/v1/website/change-requests` | Owner requests an edit → creates a Studio job/revision. |
+|🆕| GET | `/api/v1/website/sections` | Configured sections + content (read-only snapshot of the deployed site). |
+|🆕| POST | `/api/v1/website/change-requests` | Owner requests an edit → records a change request for the production team. |
 |🆕| GET | `/api/v1/website/site` | `tenant_sites` row for the current tenant. TENANT_ADMIN sees `apiKey` once after regenerate; everyone gets `apiKeyMasked`. See WEBSITE_INTEGRATION_SPEC.md §2. |
 |🆕| POST | `/api/v1/website/site/regenerate-key` | Rotate the public API key. TENANT_ADMIN only. |
 |🆕| GET / POST | `/api/v1/public/{slug}/...` | Public surface called by the tenant's deployed website. See spec §3 for full endpoint list + stock-race rules. |
@@ -1301,7 +1257,7 @@ Dependencies first, then highest-leverage modules:
 6. **Bookings** (§11.5), **Payments/Invoices** (§11.7), **Inventory** (§11.6).
 7. **Settings** (§11.11) + **Staff** (§11.10).
 8. **Marketing** (§11.8), **Analytics** (§11.9), **Website** (§11.2) — the last two
-   lean on Conddo Studio (§8) and aggregation.
+   lean on website provisioning and aggregation.
 
 > **Frontend status note (updated):** **every dashboard screen in §11.1–11.12 now
 > exists** in `conddo-app`, including a typed **API client that already consumes

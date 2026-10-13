@@ -23,8 +23,7 @@
       to keep the service standalone.
 
       The conddo-api → conddo-payments seam is a shared service token
-      (X-Payments-Service-Token), same shape as the existing
-      conddo-api ↔ conddo-studio intake seam.
+      (X-Payments-Service-Token).
     -->
     <dependencies>
         <dependency>

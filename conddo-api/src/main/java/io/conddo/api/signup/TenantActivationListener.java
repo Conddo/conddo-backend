@@ -11,9 +11,6 @@ import io.conddo.core.service.BillingService;
 import io.conddo.core.service.TenantSiteService;
 import io.conddo.core.service.WebsiteGenerationService;
 import io.conddo.core.signup.TenantActivatedEvent;
-import io.conddo.core.signup.WebsiteTypeRecommendation;
-import io.conddo.core.signup.WebsiteTypeResolver;
-import io.conddo.core.studio.StudioJobGateway;
 import io.conddo.core.tenant.TenantScoped;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,17 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
- * Closes the signup → Studio loop: after a tenant commits, resolve which kind of
- * website they need ({@link WebsiteTypeResolver}) and hand a {@code WEBSITE_BUILD}
- * job to Studio via the existing {@link StudioJobGateway} intake seam.
+ * Closes the signup loop: after a tenant commits, provision its payments
+ * sub-account, start its trial, seed its managed website, and alert the
+ * platform admin.
  *
- * <p>Runs <b>after commit</b> so a flaky Studio call never rolls back signup. The
- * gateway is already fail-safe (returns empty on errors / unconfigured), but we
- * also catch everything else here — signup must never break because of Studio.
+ * <p>Runs <b>after commit</b> so a flaky downstream call never rolls back
+ * signup. Each handler is independently fail-safe — signup must never break
+ * because of a downstream dependency.
  */
 @Component
 public class TenantActivationListener {
@@ -43,8 +37,6 @@ public class TenantActivationListener {
 
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
-    private final WebsiteTypeResolver websiteTypeResolver;
-    private final StudioJobGateway studioJobGateway;
     private final PaymentsGateway paymentsGateway;
     private final BillingService billingService;
     private final WebsiteGenerationService websiteGeneration;
@@ -53,8 +45,6 @@ public class TenantActivationListener {
 
     public TenantActivationListener(TenantRepository tenantRepository,
                                     UserRepository userRepository,
-                                    WebsiteTypeResolver websiteTypeResolver,
-                                    StudioJobGateway studioJobGateway,
                                     PaymentsGateway paymentsGateway,
                                     BillingService billingService,
                                     WebsiteGenerationService websiteGeneration,
@@ -62,8 +52,6 @@ public class TenantActivationListener {
                                     NotificationService notificationService) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
-        this.websiteTypeResolver = websiteTypeResolver;
-        this.studioJobGateway = studioJobGateway;
         this.paymentsGateway = paymentsGateway;
         this.billingService = billingService;
         this.websiteGeneration = websiteGeneration;
@@ -72,11 +60,10 @@ public class TenantActivationListener {
     }
 
     /**
-     * Fifth handler on the same event: email the platform admin so we know
-     * within seconds when a new tenant signs up. No-op when
-     * {@code conddo.notify.platform-admin-email} is unset. Cross-tenant so
-     * the owner-user lookup works — the event handler doesn't have a bound
-     * tenant context.
+     * Email the platform admin so we know within seconds when a new tenant
+     * signs up. No-op when {@code conddo.notify.platform-admin-email} is unset.
+     * Cross-tenant so the owner-user lookup works — the event handler doesn't
+     * have a bound tenant context.
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -100,33 +87,9 @@ public class TenantActivationListener {
         }
     }
 
-    @Async
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
-    public void onTenantActivated(TenantActivatedEvent event) {
-        try {
-            Tenant tenant = tenantRepository.findById(event.tenantId())
-                    .orElseThrow(() -> new NotFoundException("Tenant " + event.tenantId() + " vanished"));
-
-            WebsiteTypeRecommendation rec = websiteTypeResolver.resolve(
-                    tenant.getVerticalId(), tenant.getPlanId());
-
-            Map<String, Object> brief = briefFor(tenant, rec);
-            String title = "Website Build — " + tenant.getName();
-            studioJobGateway.createJob(tenant.getId(), "WEBSITE_BUILD", title, brief)
-                    .ifPresent(ref -> log.info("Auto-created Studio job {} ({}) for tenant {} — {}",
-                            ref.jobNumber(), rec.type(), tenant.getId(), rec.reasoning()));
-        } catch (RuntimeException ex) {
-            // Signup is already committed — never let a downstream failure surface.
-            log.error("Auto-create Studio job failed for tenant {}: {}", event.tenantId(), ex.getMessage());
-        }
-    }
-
     /**
-     * Second handler on the same event (§7a): provision the tenant's RoutePay
-     * sub-account through conddo-payments. Separate listener method so a Studio
-     * outage doesn't suppress payments provisioning and vice versa — each
-     * gateway is independently fail-safe.
+     * Provision the tenant's RoutePay sub-account through conddo-payments
+     * (ACTION_LIST §7a). Independently fail-safe.
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -148,9 +111,9 @@ public class TenantActivationListener {
     }
 
     /**
-     * Third handler on the same event (BILLING_TIERS_SPEC §3): start the
-     * 14-day trial for the new tenant. Idempotent — BillingService skips if a
-     * live subscription already exists, so a replayed event is safe.
+     * Start the 14-day trial for the new tenant (BILLING_TIERS_SPEC §3).
+     * Idempotent — BillingService skips if a live subscription already exists,
+     * so a replayed event is safe.
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -159,8 +122,6 @@ public class TenantActivationListener {
         try {
             Tenant tenant = tenantRepository.findById(event.tenantId())
                     .orElseThrow(() -> new NotFoundException("Tenant " + event.tenantId() + " vanished"));
-            // tenant.getPlanId() is now post-rename — launcher / growth / scaler.
-            // Fall through to launcher (BillingService default) when the wizard didn't pick.
             var sub = billingService.createTrialForNewTenant(tenant.getId(), tenant.getPlanId());
             log.info("Started {}-trial for tenant {} (plan={}, expires={})",
                     sub.getStatus(), tenant.getId(), tenant.getPlanId(), sub.getExpiresAt());
@@ -170,12 +131,10 @@ public class TenantActivationListener {
     }
 
     /**
-     * Fourth handler on the same event: seed the managed website — call the
-     * AI generator with the tenant's name + vertical + vibe, save as a draft
-     * on tenant_sites. Free (bundled with the AI provisioning charge that's
-     * already been booked at tenant creation). Fully fail-safe: an LLM
-     * outage falls through the generator's rule-based stub, and a save
-     * failure just logs — the tenant can still complete signup.
+     * Seed the managed website — call the AI generator with the tenant's name +
+     * vertical + vibe, save as a draft on tenant_sites. Fully fail-safe: an LLM
+     * outage falls through the generator's rule-based stub, and a save failure
+     * just logs — the tenant can still complete signup.
      */
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -194,25 +153,5 @@ public class TenantActivationListener {
         } catch (RuntimeException ex) {
             log.error("Auto-seed managed site failed for tenant {}: {}", event.tenantId(), ex.getMessage());
         }
-    }
-
-    private Map<String, Object> briefFor(Tenant tenant, WebsiteTypeRecommendation rec) {
-        Map<String, Object> brief = new LinkedHashMap<>();
-        brief.put("source", "tenant-activated");
-        brief.put("tenantId", tenant.getId().toString());
-        brief.put("tenantSlug", tenant.getSlug());
-        brief.put("businessName", tenant.getName());
-        brief.put("vertical", tenant.getVerticalId());
-        brief.put("plan", tenant.getPlanId());
-        brief.put("websiteType", rec.type().name());
-        brief.put("recommendedSections", rec.sections());
-        brief.put("typeReasoning", rec.reasoning());
-        if (tenant.getContactEmail() != null) {
-            brief.put("contactEmail", tenant.getContactEmail());
-        }
-        if (tenant.getContactPhone() != null) {
-            brief.put("contactPhone", tenant.getContactPhone());
-        }
-        return brief;
     }
 }

@@ -1,18 +1,19 @@
-# Social Media + Creative Services — Cross-Team Spec
+# Social Media Marketing — Cross-Team Spec
 
 **Status**: Scoping (no code yet). This is sprint-2 work, not weekend launch.
-**Touches**: conddo-app (FE), conddo-backend (BE auth + posting + payments
-bridge), conddo-payments (charge orchestration), conddo-studio (creative
-service jobs land here as Studio jobs), Conddo platform admin (creative
-service catalog, monthly packages).
+**Scope**: The social-marketing surface only — Ayrshare connect/schedule, social
+accounts, media library, and webhooks. The Creative Services marketplace and
+Brand Packages features have been removed, and the retired `conddo-studio`
+service is no longer part of this flow; all references to them have been
+stripped from this spec. The file name is retained for link stability.
+**Touches**: conddo-app (FE), conddo-backend (BE auth + posting + scheduling +
+media).
 
 The big idea, in one paragraph: A Conddo tenant connects their social
 accounts (Facebook Page, Instagram Business, LinkedIn Company, X, TikTok),
-schedules posts to them from the dashboard, and — for any post — can
-optionally request a paid creative service (graphic design, video edit,
-ad creative) that gets routed to Conddo Studio as a job. They can also
-subscribe to a monthly Brand Package that gives them a steady stream of
-designed assets each month.
+and schedules posts to them from the dashboard. That is the whole surface —
+connect accounts, compose, schedule, manage the media library, and track
+delivery via webhooks.
 
 ---
 
@@ -22,10 +23,8 @@ designed assets each month.
 which gives us a unified API across every channel we care about. **Our
 master API key is already in hand** — product holds it, BE just needs to
 drop it into **Render's `conddo-backend` service** as `AYRSHARE_API_KEY`
-and start hitting the gateway. Only conddo-backend needs the key;
-conddo-studio and conddo-payments are pulled into the creative-services
-flow indirectly (Studio receives the job, payments charges the tenant)
-but neither calls Ayrshare directly. No per-platform app review, no OAuth
+and start hitting the gateway. Only conddo-backend needs the key; no other
+service calls Ayrshare directly. No per-platform app review, no OAuth
 code paths to write, no provider-specific posting quirks for us to
 maintain.
 
@@ -83,8 +82,7 @@ feature, so Launcher tenants don't trigger the meter.
 
 All three are declared (with `sync: false`) in
 [`render.yaml`](./render.yaml) under the `conddo-backend` service so the
-shape is durable; only the values go into the Render dashboard. Not on
-`conddo-studio` or `conddo-payments` — they don't call Ayrshare.
+shape is durable; only the values go into the Render dashboard.
 
 ### Native per-platform path — abandoned
 
@@ -264,8 +262,7 @@ is one extra HTTP call.
 ## 4. Media library — uploads
 
 Posts attach images / videos. Use the same Cloudinary integration the rest
-of the platform uses (§9 in ACTION_LIST), with a new `media_library` table
-scoped per tenant:
+of the platform uses, with a new `media_assets` table scoped per tenant:
 
 ```sql
 CREATE TABLE media_assets (
@@ -291,201 +288,35 @@ Scaler. Surface via a usage bar at the top of the media library.
 
 ---
 
-## 5. Creative service — the "I need this designed" path
-
-This is the new product. On the post composer, beside the **Schedule** CTA,
-a **"Need creative help?"** chip opens a flow:
-
-```
-Step 1. Service type — Graphic design / Video edit / Ad creative
-Step 2. Brief — what's the post for, tone, references, deadline
-Step 3. Attach raw media (photos, footage) — uses the media library
-Step 4. Price — surfaces from creative_service_offerings (BE-controlled
-        catalog); the tenant sees a flat NGN price
-Step 5. Pay — RoutePay checkout
-Step 6. Done — a Studio job is created and the tenant gets a tracking link
-```
-
-### Schema
-
-```sql
--- Catalog of services Conddo offers. Studio admin manages this.
-CREATE TABLE creative_service_offerings (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code            VARCHAR(80) NOT NULL UNIQUE,   -- 'design_static', 'design_reels', 'ad_creative_static', …
-    name            VARCHAR(160) NOT NULL,
-    description     TEXT,
-    price_kobo      INTEGER NOT NULL,              -- in kobo for precision
-    turnaround_hours INTEGER NOT NULL,
-    active          BOOLEAN NOT NULL DEFAULT true
-);
-
--- A tenant's request for one of those services.
-CREATE TABLE creative_service_requests (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id       UUID NOT NULL REFERENCES tenants(id),
-    user_id         UUID NOT NULL REFERENCES users(id),
-    offering_id     UUID NOT NULL REFERENCES creative_service_offerings(id),
-    -- The post the creative is for (optional — they can also order standalone).
-    social_post_id  UUID REFERENCES social_posts(id),
-    brief           TEXT NOT NULL,
-    attached_media  JSONB,            -- [media_asset_id, …]
-    price_kobo      INTEGER NOT NULL, -- frozen at request time so catalog updates don't shift it
-    status          VARCHAR(20) NOT NULL,
-                    -- 'pending_payment' | 'queued' | 'in_progress' | 'delivered' | 'cancelled'
-    payment_id      UUID,             -- references conddo-payments charge
-    studio_job_id   UUID,             -- written once Studio creates the matching job
-    delivery_media  JSONB,            -- [media_asset_id, …] returned by Studio
-    delivered_at    TIMESTAMPTZ,
-    created_at, updated_at
-);
-```
-
-### Flow
-
-1. FE → `POST /api/v1/creative-services/requests` with `{offering_code, brief,
-   attached_media, social_post_id?}`. BE creates the row with
-   `status='pending_payment'` and `price_kobo` frozen from the catalog.
-2. BE responds with `{request, checkoutUrl}` (RoutePay-hosted page; same
-   flow as the existing payments service).
-3. FE redirects to checkout. RoutePay → conddo-payments webhook on
-   success.
-4. conddo-payments emits an internal event `creative.request.paid {requestId}`.
-5. The creative-services service hands the request off to **Studio**:
-   - `POST /api/jobs` (Studio backend) with a synthetic job whose title +
-     description come from the request brief, the attached media URLs,
-     and a `creativeServiceRequestId` foreign key.
-   - On Studio's side, this surfaces as a normal job in the QA Queue,
-     assignable to design / video-editor staff.
-6. When Studio marks the job **delivered** (uploads final media + clicks
-   Submit), Studio fires a webhook back to the main API:
-   `POST /internal/creative-services/{id}/delivered` with the media URLs.
-7. The creative-services service flips the request to `delivered`, attaches
-   the final media to the original `social_posts` row (if linked), and
-   notifies the tenant ("Your design is ready"). Tenant clicks → reviews →
-   approves → original post auto-pulls the new media.
-
-### Endpoints
-
-| Method | Path | Notes |
-|---|---|---|
-| GET  | `/api/v1/creative-services/offerings` | Public catalog (auth required, but no plan gate — pricing visible to all tenants) |
-| POST | `/api/v1/creative-services/requests` | Creates pending request + checkoutUrl |
-| GET  | `/api/v1/creative-services/requests` | Tenant's own request history |
-| GET  | `/api/v1/creative-services/requests/{id}` | Detail |
-| POST | `/internal/creative-services/{id}/delivered` | Studio→main API webhook; service-token auth |
-
----
-
-## 6. Monthly Brand Package — subscription on top of the base plan
-
-A tenant subscribes to a recurring creative bundle that auto-includes N
-designs / month, at a tier price.
-
-```sql
-CREATE TABLE brand_package_offerings (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code            VARCHAR(80) NOT NULL UNIQUE,   -- 'starter_brand', 'pro_brand', …
-    name            VARCHAR(160) NOT NULL,
-    monthly_price_kobo  INTEGER NOT NULL,
-    includes        JSONB NOT NULL,    -- {design_static: 8, design_reels: 2, ad_creative_static: 4}
-    active          BOOLEAN NOT NULL DEFAULT true
-);
-
-CREATE TABLE brand_package_subscriptions (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id           UUID NOT NULL REFERENCES tenants(id),
-    offering_id         UUID NOT NULL REFERENCES brand_package_offerings(id),
-    status              VARCHAR(20) NOT NULL,    -- 'active' | 'past_due' | 'cancelled'
-    current_period_start TIMESTAMPTZ NOT NULL,
-    current_period_end   TIMESTAMPTZ NOT NULL,
-    cancelled_at        TIMESTAMPTZ,
-    created_at, updated_at
-);
-
--- Tracks consumption against the period's quota.
-CREATE TABLE brand_package_usage (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    subscription_id     UUID NOT NULL REFERENCES brand_package_subscriptions(id),
-    period_start        TIMESTAMPTZ NOT NULL,
-    period_end          TIMESTAMPTZ NOT NULL,
-    -- One row per period start; counts increment as requests come in.
-    counts              JSONB NOT NULL DEFAULT '{}'  -- {design_static: 3, …}
-);
-```
-
-Active subscribers can create creative service requests **without paying
-per-job** as long as they have quota left. The request's `payment_id`
-stays null and `price_kobo = 0`; instead the BE increments
-`brand_package_usage.counts[offering_code]` and rejects (HTTP 409
-`QUOTA_EXHAUSTED`) when the count would exceed the package's `includes`.
-
-Renewal: a `@Scheduled` job at start-of-day rolls the period and charges
-the subscription via RoutePay's card-on-file (extends the existing
-[BILLING_TIERS_SPEC.md](./BILLING_TIERS_SPEC.md) renewal infrastructure).
-Failed charges flip the subscription to `past_due` and queue a notification.
-
-### Endpoints
-
-| Method | Path |
-|---|---|
-| GET  | `/api/v1/brand-packages/offerings` |
-| GET  | `/api/v1/brand-packages/subscription` (the tenant's current) |
-| POST | `/api/v1/brand-packages/subscription` `{offering_code}` — initial charge |
-| POST | `/api/v1/brand-packages/subscription/cancel` |
-
----
-
-## 7. FE work (conddo-app)
+## 5. FE work (conddo-app)
 
 Pages / components to build, in roughly this order:
 
 | Order | Surface | What |
 |---|---|---|
-| 1 | `/settings/connections` (restore from "Coming soon") | List of providers, "Connect" buttons that hit the BE's `connect` endpoint and redirect to the OAuth dialog, per-account "Disconnect" with a confirm modal |
+| 1 | `/settings/connections` (restore from "Coming soon") | List of providers, "Connect" buttons that hit the BE's `connect` endpoint and redirect to the Ayrshare hosted dialog, per-account "Disconnect" with a confirm modal |
 | 2 | `/marketing/social` composer | Multi-account target selector (chips), media picker from library + upload, date/time picker, schedule button. Already partially scaffolded in [SchedulePostModal](../conddo-app/components/app/SchedulePostModal.tsx). |
 | 3 | `/marketing/media` (new) | Grid view of `media_assets`, upload CTA, delete, usage bar |
-| 4 | `RequestCreativeModal` | Brief textarea + attached-media picker + offering selector + price preview + "Pay & queue" CTA. Opens from the composer or `/marketing/social` row "+ Add creative" action |
-| 5 | `/marketing/creative-services` (new) | Tenant's request history with delivery status + download links + brand-package summary card |
-| 6 | `/marketing/brand-packages` (new) | Catalog of monthly packages with "Subscribe" CTA |
-| 7 | Dashboard widget | "X designs left this month" card for Brand Package subscribers |
-
-## 8. Studio FE work
-
-| Surface | What |
-|---|---|
-| Job detail | New "Creative service request" sidebar block when `job.creativeServiceRequestId` is set — surfaces the brief, raw media downloads, and the offering code. |
-| Job submit | On delivery, the existing submit flow auto-fires the `internal/creative-services/{id}/delivered` webhook with the uploaded final media — no Studio UI change needed beyond the existing asset upload. |
-| Admin → Job Types | Add `CREATIVE_DESIGN`, `CREATIVE_VIDEO`, `CREATIVE_AD` types so dispatchers can route by skill. |
 
 ---
 
-## 9. Plan gating
+## 6. Plan gating
 
 | Feature | Launcher | Growth | Scaler |
 |---|---|---|---|
 | `social_scheduler` (connect + post + schedule) | — | ✓ | ✓ |
 | `media_library` | basic (500MB) | ✓ (5GB) | ✓ (unlimited) |
-| `creative_services_marketplace` | ✓ (pay-per-job) | ✓ (pay-per-job) | ✓ (pay-per-job) |
-| `brand_package_subscription` | — | ✓ | ✓ |
-
-Pay-per-job creative services are deliberately on Launcher too — this is
-revenue we want from the smallest tenants. The subscription model is a
-Growth+ feature because the package only makes economic sense when paired
-with an active marketing surface.
 
 ---
 
-## 10. Open product questions
+## 7. Open product questions
 
 - Provider mix beyond Phase 1 (FB+IG) — confirm priority of LinkedIn vs X vs TikTok.
-- Brand Package tier prices + included counts — needs product/finance call before catalog seed.
-- Ad management (Meta ads budget top-up) — is that a separate Phase or rolled into creative-ad-creative requests? Today the FE has an empty "Ads" tab.
-- Studio team capacity model — at 50 active brand-package subscribers each pulling ~10 designs/month that's 500 jobs/month against today's Studio team. Capacity planning before launch.
+- Ad management (Meta ads budget top-up) — is that a separate Phase? Today the FE has an empty "Ads" tab.
 
 ---
 
-## 11. Out of scope (call out so nobody builds it by accident)
+## 8. Out of scope (call out so nobody builds it by accident)
 
 - DM / messenger replies (totally different API set; ChatOps surface, not marketing)
 - Reels analytics / engagement scoring (Meta provides this — defer until v2)
@@ -495,7 +326,7 @@ with an active marketing surface.
 
 ---
 
-## 12. Phasing
+## 9. Phasing
 
 ### Ayrshare path (recommended, ~1 week per phase)
 
@@ -508,14 +339,11 @@ connect URL). Ship the schedule endpoint (proxies to Ayrshare's
 flips the provider `status` from `pending_approval` → `live` and the
 Connect button starts opening the Ayrshare hosted dialog.
 
-**Phase 2 (~1 week)**: Media library + creative service requests live.
-Scheduling + publishing covers FB + IG + LinkedIn + X + TikTok + YouTube
-+ Pinterest + GMB all at once (Ayrshare covers them as one API).
+**Phase 2 (~1 week)**: Media library live. Scheduling + publishing covers
+FB + IG + LinkedIn + X + TikTok + YouTube + Pinterest + GMB all at once
+(Ayrshare covers them as one API).
 
-**Phase 3 (~2 weeks)**: Brand Package subscriptions. Dashboard widgets.
-Studio admin tools for creative offerings.
-
-**Phase 4**: Analytics rollup (Ayrshare provides post-level analytics —
+**Phase 3**: Analytics rollup (Ayrshare provides post-level analytics —
 we just aggregate + present).
 
 ### Native path (fallback only)
@@ -527,7 +355,7 @@ stay disabled with "Awaiting Meta approval".
 **Phase 2 (3-4 wks)**: FB + IG live after App Review.
 
 **Phase 3 (6-8 wks)**: LinkedIn (separate Marketing Developer Platform
-approval). Brand Packages.
+approval).
 
 **Phase 4**: X, TikTok, ads, analytics.
 

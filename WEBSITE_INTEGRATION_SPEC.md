@@ -13,7 +13,7 @@ type, `/website/site` + `/website/site/regenerate-key` endpoints).
 
 The FE assumes `/website/site` exists and renders the panel from its shape;
 if it 404s or 5xxs the panel shows "your site's developer toolkit appears
-here once Studio registers your website" — no crash.
+here once your website is registered" — no crash.
 
 ---
 
@@ -123,7 +123,7 @@ All routed under `/api/v1/public/{slug}/...`. Auth via the
    the header value. **Constant-time** compare; 401 on mismatch.
 3. Check `tenant_sites.is_active` AND `tenant_sites.qa_approved`. If either
    is false → 403 `SITE_NOT_LIVE`. (Pre-QA sites can only be hit from the
-   Studio reviewer's session — see §6 for the workaround.)
+   platform admin reviewer's session — see §6 for the workaround.)
 4. Bind `TenantContext` to the resolved tenant_id (Postgres GUC) for the
    rest of the request.
 5. Apply per-key rate limiting (token bucket; suggested 120 req/min/key).
@@ -189,8 +189,8 @@ auth flow — dashboard uses JWT; public-site path uses subdomain + per-site
 API key.)
 
 **Open Q: Growth `.com.ng` domains via 9stacks** — until the 9stacks
-provisioning API is confirmed (open product item), Studio team registers
-custom_domain rows manually. The DNS and SSL for those domains live on
+provisioning API is confirmed (open product item), the production team
+registers custom_domain rows manually. The DNS and SSL for those domains live on
 9stacks' side; we only need to know about them via `tenant_sites.custom_domain`.
 
 ### 6. Pre-QA preview access
@@ -199,13 +199,13 @@ QA reviewers need to open the site before `qa_approved=true`. Two
 acceptable workarounds:
 
 - **Reviewer header**: the public endpoint accepts an `X-Conddo-QA-Token`
-  header issued to logged-in `SUPER_ADMIN` Studio reviewers. When present
+  header issued to logged-in `SUPER_ADMIN` platform admin reviewers. When present
   and valid, bypass the `qa_approved` gate. Token short-lived (1h) and
   scoped to a specific site by the issuing endpoint.
 - **Preview slug**: an opt-in `preview-` slug prefix (e.g.
   `preview-seb-bayor.conddo.io`) that serves the site regardless of approval
-  status, with a "PREVIEW — NOT LIVE" injected banner. Studio team shares
-  this URL with the QA reviewer.
+  status, with a "PREVIEW — NOT LIVE" injected banner. The production team
+  shares this URL with the QA reviewer.
 
 Either works. Pick one; the source doc doesn't specify.
 
@@ -243,8 +243,8 @@ If 9stacks confirms an API:
 - Trigger DNS record on our side (the SLD points the .com.ng at the
   tenant's Vercel deploy)
 
-Until then, Studio team handles manually — `tenant_sites.custom_domain` is
-populated by a Studio admin endpoint.
+Until then, the production team handles it manually — `tenant_sites.custom_domain`
+is populated by a platform admin endpoint.
 
 ### B. WebSocket push for live data
 
@@ -290,7 +290,7 @@ I added a pointer in §11.2 in this same commit.
 
 ## Out of scope
 
-- Tenant-managed page builder (Studio team owns this)
+- Tenant-managed page builder (the production team owns this)
 - E-commerce checkout / payment processing on the public site (defer until
   RoutePay public-endpoint integration lands)
 - Per-customer accounts on the tenant's site (each merchant site treats

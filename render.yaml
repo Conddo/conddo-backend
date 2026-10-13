@@ -94,49 +94,6 @@ services:
       # Generate once: openssl rand -hex 32
       - key: CONDDO_SOCIAL_TOKEN_KEY
         sync: false
-      # Conddo Studio hand-off (SERVICE_TOPOLOGY.md §4). Optional: if STUDIO_BASE_URL
-      # is unset, an owner website change-request is recorded PENDING (no Studio job).
-      # The service token is shared with the studio service (kept in sync below).
-      - key: STUDIO_BASE_URL
-        sync: false            # e.g. https://conddo-studio.onrender.com
-      - key: STUDIO_SERVICE_TOKEN
-        fromService:
-          type: web
-          name: conddo-studio
-          envVarKey: STUDIO_SERVICE_TOKEN
-
-  # Internal Conddo Studio / Jobs Board service (Infrastructure §12/§13).
-  # Standalone: own HMAC STUDIO_JWT + own studio/jobs schemas in the SAME managed
-  # Postgres. Connects as an owner-capable role (it creates/owns those schemas).
-  # Point jobs.conddo.io / studio.conddo.io at this service's URL.
-  - type: web
-    name: conddo-studio
-    runtime: docker
-    dockerfilePath: ./Dockerfile.studio
-    plan: starter
-    region: frankfurt
-    healthCheckPath: /actuator/health
-    autoDeploy: true
-    envVars:
-      # Same managed DB as the API; this service owns the studio/jobs schemas.
-      - key: STUDIO_DB_URL
-        sync: false            # jdbc:postgresql://HOST:5432/DBNAME (same as CONDDO_DB_URL)
-      - key: STUDIO_DB_USER
-        sync: false            # owner role (creates schemas)
-      - key: STUDIO_DB_PASSWORD
-        sync: false
-      # Internal-staff HMAC secret — generated once by Render (≥ 32 bytes).
-      - key: STUDIO_JWT_SECRET
-        generateValue: true
-      # Shared service token for the platform → Studio job-intake hand-off
-      # (SERVICE_TOPOLOGY.md §4). conddo-api pulls this same value via fromService.
-      - key: STUDIO_SERVICE_TOKEN
-        generateValue: true
-      - key: STUDIO_JWT_ISSUER
-        value: https://jobs.getconddo.com
-      # Jobs Board frontend origin(s), e.g. https://jobs.getconddo.com
-      - key: STUDIO_CORS_ALLOWED_ORIGINS
-        sync: false
 
 databases:
   - name: conddo-postgres

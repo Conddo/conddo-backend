@@ -56,7 +56,8 @@ public class StockMovementController {
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return ApiResponse.ok(service.list(productId, type, page, size)
+        return ApiResponse.ok(service.list(productId, type, null, null,
+                        org.springframework.data.domain.PageRequest.of(page, size))
                 .getContent().stream().map(MovementView::of).toList());
     }
 

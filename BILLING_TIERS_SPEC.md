@@ -276,8 +276,8 @@ When `status = 'expired'` OR `status = 'grace'`:
   }
   ```
 - Read endpoints continue to work (so the tenant can pull their data out).
-- The website (`tenant.website_status`) flips to `OFFLINE` — Studio webhook
-  removes from public DNS.
+- The website (`tenant.website_status`) flips to `OFFLINE` and is removed
+  from public DNS.
 
 ### 8. Tests
 
@@ -347,7 +347,7 @@ When a tenant upgrades to Growth (or signs up directly on Growth and
 trial ends with payment): trigger the 9stacks integration to:
 - Provision a `.com.ng` domain for the tenant's chosen handle
 - Create N business email mailboxes (default: 1 — `info@{handle}.com.ng`)
-- Wire those into the tenant's website DNS via Studio
+- Wire those into the tenant's website DNS
 
 This is currently a manual step. The 9stacks API availability is an
 **open item** in the product spec — confirm before building.

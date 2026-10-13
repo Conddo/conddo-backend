@@ -21,9 +21,9 @@ operations dashboard tailored to how their industry actually runs.
 
 Two things make us different from Bumpa, Selar, Wix, and Notion:
 
-1. **We build the website for them.** An internal production team (Conddo
-   Studio) takes the brief and ships a real site to a `<brand>.conddo.io`
-   subdomain — fast, professional, mobile-first.
+1. **We build the website for them.** An internal production team takes
+   the brief and ships a real site to a `<brand>.conddo.io` subdomain —
+   fast, professional, mobile-first.
 2. **The platform adapts to the vertical.** A pharmacy sees NAFDAC numbers
    and expiry dates. A fashion brand sees measurement profiles and fitting
    stages. Same product, different fields.
@@ -127,7 +127,7 @@ That means three things, in order of importance:
 | **Website delivery** | % of `WEBSITE_BUILD` jobs delivered within 7 days of signup | 85% |
 | **Retention (month 1)** | % of new tenants still logging in at day 30 | 50% |
 | **First customer interaction** | % of new tenants who record a customer / order / booking within 14 days | 60% |
-| **Studio QA quality** | First-pass approval rate | > 70% |
+| **Production QA quality** | First-pass approval rate | > 70% |
 
 ### 3.2 V1 anti-goals
 
@@ -260,26 +260,6 @@ partner — give them Conddo logistics"); fashion-brand referrals
 
 ---
 
-### 4.5 The Conddo Studio team (Secondary)
-
-Internal Handel Cores staff who deliver the websites. Six roles:
-Developer, Designer, Writer, QA Reviewer, Team Lead, Admin.
-
-Not the customer — but the design has to make sense for them too because
-**they're the throughput bottleneck**. If a developer can't claim and
-deliver 8 jobs per week, V1's "ship a site within 7 days" promise fails.
-
-**What the Studio team needs:**
-- A job board they can scan in 30 seconds — what's mine, what's available,
-  what's late.
-- Brief + assets + AI suggestions + design standards bundled per job.
-- An export of the bundle so they can work offline / in their preferred
-  external tools.
-- A QA queue that's clear about what's required vs nice-to-have.
-- SLA visibility so leads can re-balance before something turns red.
-
----
-
 ## 5. Use Cases & User Stories
 
 The headline journeys. Each is a "would the product feel right to do this?"
@@ -300,8 +280,8 @@ sanity check.
 - Pick plan (Starter / Business / Pro; monthly/annual toggle visible)
 - Land on the dashboard, already authenticated
 - Within minutes: she's been emailed the OTP via Brevo, she's logged in,
-  her workspace is ready, and a `WEBSITE_BUILD` job has fired to the
-  Conddo Studio team — no action required from her.
+  her workspace is ready, and her website build is underway with the
+  production team — no action required from her.
 
 **Day 1-3 — Website in progress**
 
@@ -319,7 +299,7 @@ sanity check.
 > *As Amaka, when my website is ready, I want to share it instantly so
 > my next IG-DM customer just gets the link.*
 
-- Studio team submits the job, QA approves, status flips to DELIVERED
+- The production team ships the site and it goes live
 - Amaka gets a notification (in-app + email + SMS): "Your website is live
   at amaka-styles.conddo.io"
 - She opens it on her phone, screenshots it, posts to IG
@@ -348,52 +328,7 @@ sanity check.
 - Campaign goes live; reach + clicks + new IG followers tracked in her
   dashboard
 
-### 5.2 Conddo Studio team journey
-
-**Developer's morning**
-
-> *As a Developer on the Studio team, I want to see what's mine, what's
-> available, and what's coming up against SLA — without reading 50
-> notifications.*
-
-- Login → Dashboard shows: My active jobs (3), Available jobs matching
-  my skills (5)
-- Click into one available job → read brief + see assets + AI-suggested
-  copy + design standards for the vertical
-- Hit Claim → job moves to my list
-- Hit Open Builder Kit → downloads the export bundle (brief.md +
-  assets/ + ai-suggestions.json + standards.json)
-- Build the site in VS Code / external tools
-- When done: import the bundle back with the live `studioUrl`
-- Hit Submit for QA
-
-**QA reviewer's afternoon**
-
-> *As a QA Reviewer, I want to review a submission against the standard
-> checklist in 5-10 minutes, with clear pass/fail per item.*
-
-- QA Queue → click oldest item
-- Hit "Start review" → checklist appears (section-grouped: Content / Design
-  / Technical), each item pass/fail with optional note
-- Studio URL opens in side panel
-- Hit Approve (all required items pass) → job moves to DELIVERED, customer
-  is notified
-- Or hit Return for Revision → write feedback, items the developer needs
-  to fix
-
-**Lead's mid-shift**
-
-> *As a Team Lead, I want to see the SLA health of the whole board at a
-> glance and intervene on anything turning amber.*
-
-- Operations Dashboard: GREEN / AMBER / RED counts, status breakdown
-- Live updates via SSE — no refresh needed
-- Click an amber job → see why (assignee on leave; original SLA was tight)
-- Three lead actions: Reassign (to someone with capacity), Extend SLA
-  (with reason logged), Escalate (broadcasts to all leads + admins via
-  email + SSE)
-
-### 5.3 Platform admin journey (pending §23)
+### 5.2 Platform admin journey
 
 **A real-user incident**
 
@@ -401,12 +336,12 @@ sanity check.
 > hacked, I want to find them, see their session state, and act —
 > without writing SQL.*
 
-- Studio → Platform → Search "amaka-styles" → tenant profile
+- Platform admin → Search "amaka-styles" → tenant profile
 - See: status (ACTIVE), 1 admin user, 3 staff, last login 2 days ago
 - See per-user: active sessions, recent activity, lockout state
 - Actions: Force password reset (Amaka gets an email), Suspend tenant
   (kills all sessions), Change a user's role
-- Every action audited; SSE broadcast to all Studio admins for transparency
+- Every action audited; broadcast to all platform admins for transparency
 
 ---
 
@@ -482,7 +417,7 @@ What V1 ships, prioritised by P0 / P1 / P2 within each surface.
 #### Website (P0)
 
 - "Your website is being built" status (Day 0 → Day 7)
-- Change request flow: edit a section → posts to Studio as a `WEBSITE_REVISION` job
+- Change request flow: edit a section → records a change request for the production team
 - Preview link to the live site
 - Subdomain claim (Amaka picks `amaka-styles.conddo.io`)
 
@@ -514,61 +449,12 @@ What V1 ships, prioritised by P0 / P1 / P2 within each surface.
 - Email mirror for critical events
 - SMS for select events (configurable)
 
-### 6.2 Conddo Studio (Internal ops platform)
+### 6.2 Platform Admin (Internal ops)
 
-#### Worker loop (P0)
+The platform admin UI at `/admin/*` (served by conddo-app, talking to
+`conddo-api`).
 
-- Available jobs list (filtered by my skills)
-- Claim job (atomic — no two devs claim same job)
-- Start work (ASSIGNED → IN_PROGRESS)
-- Submit for QA (with studioUrl + notes)
-
-#### Job detail (P0)
-
-- Brief view (vertical-specific JSON rendered as labeled sections)
-- Files / Assets (Cloudinary upload + list + delete)
-- AI suggestions (copy per section, palette, image ranking)
-- Activity log (every state transition)
-- Lead actions (Reassign, Extend SLA, Escalate — visible to TEAM_LEAD+ only)
-
-#### QA queue (P0)
-
-- All submitted jobs awaiting review
-- Per-job review screen with section-grouped checklist
-- Approve (advances to DELIVERED) or Return with feedback (back to assignee)
-- AI QA scan (Claude, optional — `available:false` when off)
-
-#### Admin (P0 for ADMIN role)
-
-- Operations dashboard (SLA tone counts, status breakdown, all jobs)
-- All Jobs view (filterable)
-- Staff CRUD (invite, role, deactivate)
-- Job Types CRUD (add new types, tune SLA hours per type, QA checklists)
-- Design Standards Library (palettes / layouts / copy patterns / typography by vertical)
-
-#### Realtime (P0)
-
-- One SSE stream per browser tab (`/api/jobs/events`)
-- Live updates to all boards on job state changes
-- Live SLA tick (every 5 min while AMBER/RED jobs exist)
-- Live notification bell
-
-#### Performance (P1)
-
-- Per-staff dashboard: jobs completed, target progress, first-pass QA
-  rate, revisions received
-- Monthly snapshots, daily recalc at 02:00 UTC
-- (Pending) per-staff history view + per-staff drill-down for leads
-
-#### Builder workflow (P1 — pending §22)
-
-- Export: download a ZIP of the job's brief + assets + AI suggestions +
-  standards + QA history + activity
-- Build the site externally in tools of choice
-- Import: re-upload the bundle to attach the live URL + any new files
-- Atomic with optimistic-lock check
-
-#### Platform Admin (P2 — pending §23)
+#### Cross-tenant admin (P2)
 
 - Cross-tenant management (tenants list, search, suspend, reactivate)
 - Cross-tenant user management (find user, force password reset, suspend)
@@ -580,8 +466,6 @@ What V1 ships, prioritised by P0 / P1 / P2 within each surface.
   fields to the tenant's selected vertical (see [VERTICALS.md](./VERTICALS.md))
 - **Tenant subdomain routing** — `<slug>.conddo.io` resolves to the
   tenant's website on first request
-- **Service-to-service** — signup auto-creates a Studio job (async, with
-  bounded timeout so a sleeping Studio never blocks signup)
 - **Audit log** — every state change writes to `audit_log` with
   before/after JSONB
 
@@ -600,11 +484,8 @@ The non-negotiables of how Conddo.io feels.
 - 3G-friendly: route transitions show progress, images lazy-load, JSON
   payloads are slim.
 
-### 7.2 Dark mode (Studio)
+### 7.2 Theme
 
-- Conddo Studio is dark by default. The team works long shifts; daylight
-  glare matters.
-- All Studio tokens designed for AA contrast on the dark palette.
 - conddo-app is light mode only (customer-facing convention).
 
 ### 7.3 Speed feel
@@ -651,15 +532,16 @@ The non-negotiables of how Conddo.io feels.
 ## 8. Technical Considerations
 
 High level — full detail in [REQUIREMENTS.md](./REQUIREMENTS.md) and the
-architecture / infrastructure docs.
+architecture docs.
 
-### 8.1 Two-plane architecture
+### 8.1 Deployment topology
 
-- **Control plane** (tenant-facing): conddo-api + conddo-app, RLS-scoped.
-- **Production plane** (internal ops): conddo-studio + conddo-studio FE,
-  owner-role, no RLS.
-- Separate services, separate JWTs, separate auth flows. Shared Postgres
-  with schema isolation.
+- **conddo-api** — the tenant-facing Spring Boot API, RLS-scoped.
+- **conddo-payments** — a separate payments web service (own schema,
+  service-token seam to conddo-api).
+- **conddo-app** — the Next.js frontend.
+- Shared Postgres + Redis. The platform admin UI at `/admin/*` is served
+  by conddo-app and talks to conddo-api.
 
 ### 8.2 Tenant isolation via RLS
 
@@ -687,12 +569,11 @@ architecture / infrastructure docs.
 ### 8.5 Hosted by
 
 - Render (backend services + Postgres)
-- Vercel (both frontends)
+- Vercel (the frontend)
 - Cloudinary (media)
 - Brevo (transactional email + SMS)
 - Resend (email fallback)
-- Anthropic Claude (AI assistant inside Studio — copy / palette / image
-  ranking / QA scan)
+- Anthropic Claude (tenant marketing assistant — copy)
 
 ---
 
@@ -708,12 +589,11 @@ website inside Conddo.
 
 **Why not:** Two reasons:
 
-1. The Conddo Studio team builds it for them — that's our differentiator.
+1. The Conddo production team builds it for them — that's our differentiator.
 2. Customers told us in user research that they don't want to be web
    designers. "Just build me a good site."
 
-Replaced by: Studio's external builder workflow + the export/import seam
-(§22).
+Replaced by: the production team's external builder workflow.
 
 ### 9.2 Multi-language
 
@@ -742,9 +622,9 @@ push notifications, offline-first).
 ### 9.5 Customer DIY templates / page editing
 
 Customers cannot edit their website pages themselves — they request
-changes via the dashboard and Studio re-edits and re-deploys.
+changes via the dashboard and the production team re-edits and re-deploys.
 
-**Why not:** Quality + brand control + Studio is the differentiator.
+**Why not:** Quality + brand control + the done-for-you build is the differentiator.
 
 ### 9.6 Workflow automation / "Zapier inside Conddo"
 
@@ -772,15 +652,10 @@ green = ship.
 
 | Gate | What passes | Status |
 |---|---|---|
-| **Signup end-to-end** | A new tenant from a real phone completes start → verify → complete in < 5 min, lands on dashboard, has a Studio job auto-created | ✅ once `STUDIO_BASE_URL` + `STUDIO_SERVICE_TOKEN` on Render |
+| **Signup end-to-end** | A new tenant from a real phone completes start → verify → complete in < 5 min, lands on dashboard | ✅ |
 | **Email delivery** | OTP and welcome email land in inbox (Gmail, Outlook, Yahoo) within 30s | ✅ Brevo branded templates |
 | **Google Sign-in** | "Continue with Google" works on both /login and /onboarding/create-account | ⏳ backend in flight |
-| **Build → delivery** | A real Studio team member can claim, build, submit, and have QA approve a job | ✅ Studio worker loop + QA loop shipped |
-| **Realtime board** | Two browser tabs see live SSE updates without refresh | ✅ shipped |
-| **Performance recalc** | Monthly snapshots fill the perf page within 24h of first signup | ✅ daily recalc cron live |
 | **Mobile** | The landing + signup + dashboard all work on a 360px Android Chrome | ✅ post-audit b06a700 |
-| **Render env health** | `STUDIO_BASE_URL` + `STUDIO_SERVICE_TOKEN` set on conddo-backend so signup → Studio job is automatic | ⏳ user action pending |
-| **Studio admin bootstrap** | Fresh Studio deploys can create their first admin via env vars, no manual SQL | ✅ shipped |
 
 ### 10.2 Phased rollout
 
@@ -799,14 +674,13 @@ A tenant signs up today and:
 2. Completes signup in < 5 min with phone OTP and lands on a working
    dashboard
 3. Receives a confirmation email within 30s
-4. Has a Studio job auto-created for their website
-5. Gets their website delivered within 7 days
-6. Can add customers, orders, bookings, inventory, accept payments, run
+4. Gets their website delivered within 7 days
+5. Can add customers, orders, bookings, inventory, accept payments, run
    marketing campaigns, see analytics — all in Naira, all tuned to their
    vertical
-7. Sees the platform stay live (no Render-cold-start spinners > 60s)
+6. Sees the platform stay live (no Render-cold-start spinners > 60s)
 
-If all 7 hold for the first 100 paid tenants without escalation tickets
+If all 6 hold for the first 100 paid tenants without escalation tickets
 above P2, V1 is launched.
 
 ---
@@ -815,20 +689,17 @@ above P2, V1 is launched.
 
 What could go wrong, in order of severity.
 
-### 11.1 Studio team can't keep up with website demand
+### 11.1 Production team can't keep up with website demand
 
-**Risk:** We promise "website in 7 days." If signup volume outpaces Studio
-team throughput, SLAs slip, tenants churn pre-activation.
+**Risk:** We promise "website in 7 days." If signup volume outpaces
+production-team throughput, delivery slips and tenants churn
+pre-activation.
 
 **Likelihood:** Medium (signup is the easy part; build throughput is the
 bottleneck).
 
 **Mitigation:**
-- Performance dashboard surfaces individual + team throughput daily.
-- SLA monitor + escalation surfaces stuck jobs to leads in real time.
 - Hiring plan tied to weekly signups (1 developer per 50 weekly signups).
-- AI assistant (copy + palette + image ranking) shortens build time per
-  job by 30-50% target.
 - If we still slip: temporarily turn off paid acquisition until we catch
   up. Better than churning new tenants.
 
@@ -842,7 +713,7 @@ to a new user.
 **Mitigation:**
 - FE timeouts surface as clean errors instead of infinite spinners.
 - Critical paths (signup `/complete`) are async-decoupled from secondary
-  work (`@Async` listener for Studio job intake).
+  work.
 - Upgrade to Render Starter ($7/mo) before paid-launch ad-spend ramp —
   removes the sleep entirely.
 
@@ -860,7 +731,7 @@ use is where most SaaS dies.
 - Email nudges at Day 1, Day 3, Day 7 with concrete next steps.
 - The dashboard greets them by name + business — feels active, not
   abandoned.
-- Studio job delivery itself is a milestone — Day 7 should always trigger
+- Website delivery itself is a milestone — Day 7 should always trigger
   a "Your website is live" celebration moment.
 
 ### 11.4 Free tier ceiling (email + Brevo)
@@ -899,7 +770,7 @@ for-you and erode our differentiation.
 - Speed to market: ship V1 in 2026 H1, win first-mover narrative.
 - Depth of vertical fit: 8 verticals at launch, not 2. Hard to copy at
   scale.
-- Conddo Studio (production team) is operational moat — software they
+- The in-country production team is an operational moat — software they
   could copy, an in-country production org is harder.
 
 ---
@@ -928,7 +799,7 @@ needs to resolve it before V1.5.
 | | Conddo.io | Bumpa | Selar | Shopify | Wix |
 |---|---|---|---|---|---|
 | Vertical-specific UI | ✅ 8 verticals | ❌ generic | ❌ generic | ❌ generic | ❌ generic |
-| Website built for you | ✅ Conddo Studio team | ❌ DIY | ❌ DIY | ❌ DIY | ❌ DIY |
+| Website built for you | ✅ Conddo production team | ❌ DIY | ❌ DIY | ❌ DIY | ❌ DIY |
 | Naira-native payments | ✅ Paystack + RoutePay | ✅ | ✅ | ⚠️ requires dollar card for some flows | ⚠️ same |
 | Mobile-first | ✅ | ✅ | ✅ | ⚠️ desktop-tuned | ⚠️ desktop-tuned |
 | Operations dashboard | ✅ customers + orders + inventory + bookings + analytics | ⚠️ basic | ❌ payment-focused only | ✅ but English/US-tuned | ❌ marketing-only |
@@ -953,27 +824,22 @@ All plans include a 14-day free trial, no credit card required.
 
 - **Frontend** — Next.js 14, TypeScript, Tailwind CSS, lucide-react
 - **Backend** — Spring Boot 3, Java 21, PostgreSQL 16 with RLS
-- **Realtime** — Server-Sent Events (Studio side, no WebSocket)
-- **Auth** — RSA-256 JWT (platform), HMAC-SHA256 JWT (Studio)
+- **Realtime** — Server-Sent Events where push updates are needed
+- **Auth** — RSA-256 JWT (platform)
 - **Email** — Brevo (primary), Resend (fallback)
 - **SMS** — Brevo SMS / Termii
 - **Media** — Cloudinary
-- **AI** — Anthropic Claude (Sonnet by default, Opus for higher-quality
-  work) — inside Studio only
-- **Hosting** — Vercel (frontends), Render (backends + Postgres)
+- **AI** — Anthropic Claude (Sonnet by default) — for the tenant marketing assistant
+- **Hosting** — Vercel (the frontend), Render (backend services + Postgres)
 
 ### 13.4 Doc map (where to go for what)
 
 - **What is this product?** This PRD.
 - **What are we building, technically?** [REQUIREMENTS.md](./REQUIREMENTS.md)
-- **How does the API work?** [ACTION_LIST.md](./ACTION_LIST.md) for the
-  platform, [conddo_studio_combined.md](./conddo_studio_combined.md) for
-  Studio.
-- **How do the services talk?** [SERVICE_TOPOLOGY.md](./SERVICE_TOPOLOGY.md)
+- **How does the API work?** [ACTION_LIST.md](./ACTION_LIST.md)
 - **What's the architecture?** [ARCHITECTURE.md](./ARCHITECTURE.md)
-- **How do we deploy?** [DEPLOY.md](./DEPLOY.md), [conddo_infrastructure.md](./conddo_infrastructure.md)
+- **How do we deploy?** [DEPLOY.md](./DEPLOY.md)
 - **What's a "vertical" exactly?** [VERTICALS.md](./VERTICALS.md)
-- **What's the current FE / BE status?** [FRONTEND_STATUS.md](./FRONTEND_STATUS.md), [BACKEND_STATUS.md](./BACKEND_STATUS.md)
 
 ---
 

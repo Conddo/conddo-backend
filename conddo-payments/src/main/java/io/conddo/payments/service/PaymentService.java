@@ -108,11 +108,8 @@ public class PaymentService {
             throw new IllegalArgumentException("amount must be positive (in kobo)");
         }
 
-        // Tenant account only required for sub-account-routed charges. Platform
-        // charges (creative service, brand package) still verify the tenant
-        // exists, but don't require ACTIVE / a provisioned subaccountId — a
-        // tenant whose RoutePay sub-account never provisioned can still buy
-        // Conddo creative services because the money lands in our account.
+        // A tenant account is required — charges fan out to the tenant's
+        // RoutePay sub-account, so the account must exist and be able to accept.
         TenantAccount account = tenantAccounts.findById(tenantId).orElse(null);
         if (chargeKind.routesToTenantSubaccount()) {
             if (account == null) {
@@ -128,18 +125,11 @@ public class PaymentService {
         String reference = "RP-" + tenantSlug + "-" + UUID.randomUUID().toString().substring(0, 8);
         Payment payment = new Payment(tenantId, tenantSlug,
                 input.orderId(), input.bookingId(),
-                input.creativeRequestId(), input.brandPackageSubscriptionId(),
-                chargeKind,
                 input.customerId(), input.customerEmail(), input.customerName(),
                 input.description(), reference, input.amountKobo());
         payment = payments.save(payment);
 
-        // Platform charges pass a null subaccountId — the money lands in the
-        // master RoutePay account, not fanned out to a tenant. platformFeeBps
-        // is irrelevant on those calls (the whole amount is ours already).
-        String subaccountId = chargeKind.routesToTenantSubaccount() && account != null
-                ? account.getRoutepaySubaccountId()
-                : null;
+        String subaccountId = account != null ? account.getRoutepaySubaccountId() : null;
         try {
             RoutePayClient.InitPaymentResult result = routePay.initPayment(
                     new RoutePayClient.InitPaymentRequest(
@@ -158,9 +148,8 @@ public class PaymentService {
     }
 
     /**
-     * Exactly one of orderId / bookingId / creativeRequestId /
-     * brandPackageSubscriptionId must be set. The set field determines the
-     * chargeKind (which drives platform-vs-subaccount routing).
+     * Exactly one of orderId / bookingId must be set. The set field determines
+     * the chargeKind (which drives sub-account routing).
      */
     private static ChargeKind deriveChargeKind(InitPaymentInput input) {
         int set = 0;
@@ -173,18 +162,9 @@ public class PaymentService {
             set++;
             kind = ChargeKind.BOOKING_DEPOSIT;
         }
-        if (input.creativeRequestId() != null) {
-            set++;
-            kind = ChargeKind.CREATIVE_SERVICE;
-        }
-        if (input.brandPackageSubscriptionId() != null) {
-            set++;
-            kind = ChargeKind.BRAND_PACKAGE;
-        }
         if (set != 1) {
             throw new IllegalArgumentException(
-                    "Exactly one of orderId, bookingId, creativeRequestId, "
-                            + "or brandPackageSubscriptionId must be set");
+                    "Exactly one of orderId or bookingId must be set");
         }
         return kind;
     }
@@ -292,7 +272,6 @@ public class PaymentService {
         notifyClient.notifyPayment(payment.getTenantId(), payment.getId(),
                 payment.getStatus().name(),
                 payment.getOrderId(), payment.getBookingId(),
-                payment.getCreativeRequestId(), payment.getBrandPackageSubscriptionId(),
                 payment.getRoutepayReference(), payment.getAmountKobo());
         return WebhookResult.processed(payment.getId(), payment.getStatus());
     }
@@ -342,18 +321,9 @@ public class PaymentService {
     // ----- input / output records --------------------------------------------
 
     public record InitPaymentInput(UUID orderId, UUID bookingId,
-                                   UUID creativeRequestId, UUID brandPackageSubscriptionId,
                                    UUID customerId,
                                    String customerEmail, String customerName,
                                    String description, String returnUrl, long amountKobo) {
-
-        /** Back-compat constructor — no creative-service / brand-package fields. */
-        public InitPaymentInput(UUID orderId, UUID bookingId, UUID customerId,
-                                String customerEmail, String customerName,
-                                String description, String returnUrl, long amountKobo) {
-            this(orderId, bookingId, null, null, customerId,
-                    customerEmail, customerName, description, returnUrl, amountKobo);
-        }
     }
 
     public record WebhookResult(boolean processed, String reason, UUID paymentId, PaymentStatus status) {

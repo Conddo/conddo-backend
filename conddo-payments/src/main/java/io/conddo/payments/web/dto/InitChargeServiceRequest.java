@@ -13,22 +13,13 @@ import java.util.UUID;
  * a tenant Bearer JWT to forward (the FE → conddo-api hop is tenant-authed;
  * the conddo-api → payments hop uses the service token).
  *
- * <p>Exactly one of {@code orderId} / {@code bookingId} /
- * {@code creativeRequestId} / {@code brandPackageSubscriptionId} must be set
- * — the set field drives the routing decision (sub-account fan-out for
- * booking + order; platform-account direct for the Conddo-paid kinds).
- *
- * <p>{@code customerEmail} / {@code customerName} accept the merchant
- * owner's details on platform charges (creative service / brand package) —
- * RoutePay still needs a payer identity even when the money lands on our
- * master account, so the field names stay "customer*" for compat.
+ * <p>Exactly one of {@code orderId} / {@code bookingId} must be set — the set
+ * field drives the routing decision (sub-account fan-out).
  */
 public record InitChargeServiceRequest(@NotNull UUID tenantId,
                                        @NotBlank String tenantSlug,
                                        UUID orderId,
                                        UUID bookingId,
-                                       UUID creativeRequestId,
-                                       UUID brandPackageSubscriptionId,
                                        UUID customerId,
                                        @NotBlank @Email String customerEmail,
                                        @NotBlank String customerName,

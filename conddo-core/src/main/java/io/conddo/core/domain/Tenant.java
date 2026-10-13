@@ -302,13 +302,6 @@ public class Tenant {
 
     // ----- settings (§11.11) --------------------------------------------------
 
-    /** Business name is editable from settings; industry (vertical) and slug are not. */
-    public void rename(String name) {
-        if (name != null && !name.isBlank()) {
-            this.name = name;
-        }
-    }
-
     /** Mark the tenant as soft-deleted (V71). Also flips status to
      *  INACTIVE so any code path that predates the deleted_at check
      *  still refuses access to the tenant's data. */

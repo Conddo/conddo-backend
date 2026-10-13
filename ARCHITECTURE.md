@@ -12,7 +12,7 @@ Two customer-visible surfaces:
 
 ## Deployment shape
 
-**Modular monolith with two backend sidecars, one Postgres, one Redis.**
+**Modular monolith with one backend sidecar, one Postgres, one Redis.**
 
 ```
                              ┌──────────────────────┐
@@ -23,9 +23,10 @@ Two customer-visible surfaces:
                      ┌──────────────────┴──────────────────┐
                      ▼                                     ▼
        ┌──────────────────────┐              ┌──────────────────────┐
-       │  Vercel              │              │  EC2 + Caddy         │
+       │  Vercel              │              │  Railway             │
        │  conddo-app          │              │  api.getconddo.com   │
-       │  (Next.js 14, App)   │              │  (wildcard TLS)      │
+       │  (Next.js 14, App)   │              │  (conddo-api +       │
+       │                      │              │   conddo-payments)   │
        └──────────┬───────────┘              └──────────┬───────────┘
                   │ HTTPS                               │
                   └──────────────────┬──────────────────┘
@@ -46,17 +47,17 @@ Two customer-visible surfaces:
 │  RLS per     │   │  cache + bus  │   │  S3-compat   │
 │  tenant      │   │  + sessions   │   │  assets      │
 └──────────────┘   └───────────────┘   └──────────────┘
-       ▲                  ▲
-       │                  │
-┌──────┴──────────┐   ┌───┴──────────────┐
-│ conddo-payments │   │ conddo-studio    │
-│ (Spring Boot)   │   │ (Spring Boot)    │
-│ RoutePay        │   │ website / ads /  │
-│ webhooks        │   │ design jobs      │
-└─────────────────┘   └──────────────────┘
+       ▲
+       │
+┌──────┴──────────┐
+│ conddo-payments │
+│ (Spring Boot)   │
+│ RoutePay        │
+│ webhooks        │
+└─────────────────┘
 ```
 
-Three Maven modules build to three JARs. All three connect to the same Postgres (own tables, no joins across service boundaries). `conddo-api` is the primary; the sidecars run alongside on the same EC2 host via Docker Compose.
+Three Maven modules build to two runnable JARs (`conddo-api`, `conddo-payments`) plus the shared `conddo-core` library. Both services connect to the same Postgres (own tables, no joins across service boundaries). `conddo-api` is the primary; `conddo-payments` runs alongside it.
 
 ## Multi-tenancy
 
@@ -77,7 +78,7 @@ Three Maven modules build to three JARs. All three connect to the same Postgres 
 ## Auth
 
 - **Tenant users** (`users` table, tenant-scoped): `/auth/login` with `tenantSlug + email + password`.
-- **Staff** (`staff_users`, global): `/auth/staff/login` with `email + password`. Feeds `studio.getconddo.com`.
+- **Staff** (`staff_users`, global): `/auth/staff/login` with `email + password`. Feeds the platform admin at `/admin/*`.
 - JWT: RS256 signed. Claims: `sub`, `tenantId` (nullable for staff), `role`, `staffRole`, `vertical`, `plan`, `activeModules` (see below).
 - Refresh: httpOnly cookie `conddo_rt`, rotated on use, family-revocation on reuse.
 - Google Sign-In: verified server-side against Google's JWKS.
@@ -162,7 +163,7 @@ Next.js 14 App Router, one deploy, one Vercel project.
 
 ## Data model highlights
 
-- **Flyway V1..V66** — sequential migrations. RLS + policies added in V26 onwards. V66 is the credit-tables GRANT fix.
+- **Flyway V1..V80** — sequential migrations. RLS + policies added in V26 onwards. V66 is the credit-tables GRANT fix.
 - **`tenants`** — the identity axis. `vertical_id`, `plan_id`, `booking_link_slug`, `custom_domain`.
 - **`users`** — tenant-scoped auth. `google_sub` links Google identity.
 - **`staff_users`** — non-tenant, SUPER_ADMIN lives here.
@@ -175,7 +176,7 @@ Next.js 14 App Router, one deploy, one Vercel project.
 
 - Unit tests in each Maven module.
 - Integration tests use Testcontainers Postgres — the same schema Flyway applies to prod.
-- CI: GitHub Actions. Two workflows — `CI` (compile + tests) and `Release · lean` (build + push image to GHCR). Deployment on EC2 is a Docker Compose pull + restart.
+- CI: GitHub Actions. Two workflows — `CI` (compile + tests) and `Release · lean` (build + push image to GHCR). Deployment target is Railway (Docker builds per service).
 
 ## Things this document deliberately does not claim
 

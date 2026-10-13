@@ -3,7 +3,7 @@ package io.conddo.payments.common;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * Standard API envelope — same shape as conddo-api / conddo-studio
+ * Standard API envelope — same shape as conddo-api
  * ({@code {success, data, meta?, error?}}) so the tenant FE reads it
  * identically. Duplicated here to keep the service standalone.
  */

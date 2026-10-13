@@ -27,7 +27,6 @@
     <modules>
         <module>conddo-core</module>
         <module>conddo-api</module>
-        <module>conddo-studio</module>
         <module>conddo-payments</module>
     </modules>
 

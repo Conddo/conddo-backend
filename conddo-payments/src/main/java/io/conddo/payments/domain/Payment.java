@@ -53,12 +53,6 @@ public class Payment {
     @Column(name = "booking_id")
     private UUID bookingId;
 
-    @Column(name = "creative_request_id")
-    private UUID creativeRequestId;
-
-    @Column(name = "brand_package_subscription_id")
-    private UUID brandPackageSubscriptionId;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "charge_kind", nullable = false)
     private ChargeKind chargeKind = ChargeKind.BOOKING_DEPOSIT;
@@ -121,23 +115,11 @@ public class Payment {
     public Payment(UUID tenantId, String tenantSlug, UUID orderId, UUID bookingId,
                    UUID customerId, String customerEmail, String customerName, String description,
                    String routepayReference, long amountKobo) {
-        this(tenantId, tenantSlug, orderId, bookingId, null, null,
-                bookingId != null ? ChargeKind.BOOKING_DEPOSIT : ChargeKind.ORDER,
-                customerId, customerEmail, customerName, description, routepayReference, amountKobo);
-    }
-
-    /** Full constructor — V2 added creative-services and brand-package routing. */
-    public Payment(UUID tenantId, String tenantSlug, UUID orderId, UUID bookingId,
-                   UUID creativeRequestId, UUID brandPackageSubscriptionId, ChargeKind chargeKind,
-                   UUID customerId, String customerEmail, String customerName, String description,
-                   String routepayReference, long amountKobo) {
         this.tenantId = tenantId;
         this.tenantSlug = tenantSlug;
         this.orderId = orderId;
         this.bookingId = bookingId;
-        this.creativeRequestId = creativeRequestId;
-        this.brandPackageSubscriptionId = brandPackageSubscriptionId;
-        this.chargeKind = chargeKind;
+        this.chargeKind = bookingId != null ? ChargeKind.BOOKING_DEPOSIT : ChargeKind.ORDER;
         this.customerId = customerId;
         this.customerEmail = customerEmail;
         this.customerName = customerName;
@@ -197,14 +179,6 @@ public class Payment {
 
     public UUID getBookingId() {
         return bookingId;
-    }
-
-    public UUID getCreativeRequestId() {
-        return creativeRequestId;
-    }
-
-    public UUID getBrandPackageSubscriptionId() {
-        return brandPackageSubscriptionId;
     }
 
     public ChargeKind getChargeKind() {

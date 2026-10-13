@@ -18,8 +18,7 @@ import java.util.UUID;
 
 /**
  * Signed HTTP hand-off to Conddo Payments' internal endpoint (ACTION_LIST §7a).
- * Authenticates with {@code X-Payments-Service-Token}, exactly the same shape
- * as {@link io.conddo.api.studio.HttpStudioJobGateway}.
+ * Authenticates with {@code X-Payments-Service-Token}.
  *
  * <p>Enabled only when {@code payments.base-url} and
  * {@code payments.service-token} are both set; otherwise it no-ops (returns
@@ -35,7 +34,7 @@ public class HttpPaymentsGateway implements PaymentsGateway {
     private static final String PROVISION_PATH = "/api/payments/internal/tenants";
     private static final Logger log = LoggerFactory.getLogger(HttpPaymentsGateway.class);
 
-    /** Match the Studio gateway's timeouts — payments service is on the same Render free tier. */
+    /** Bounded timeouts so a payments-service outage can't block the request thread. */
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(10);
 
@@ -147,101 +146,6 @@ public class HttpPaymentsGateway implements PaymentsGateway {
                     data.path("reference").asText(null), url, data.path("status").asText(null)));
         } catch (RuntimeException ex) {
             log.error("Payments init failed for booking {}: {}", bookingId, ex.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    @Override
-    public Optional<PaymentInitResult> initCreativeServiceCharge(UUID tenantId, String tenantSlug,
-                                                                 UUID requestId, UUID userId,
-                                                                 String userEmail, String userName,
-                                                                 long amountKobo, String description,
-                                                                 String returnUrl) {
-        if (!enabled) {
-            return Optional.empty();
-        }
-        try {
-            // Field names match conddo-payments' InitChargeServiceRequest DTO.
-            // Sending creativeRequestId (and not orderId/bookingId) tells
-            // PaymentService.deriveChargeKind to route to the platform account.
-            java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
-            body.put("tenantId", tenantId);
-            body.put("tenantSlug", tenantSlug);
-            body.put("creativeRequestId", requestId);
-            body.put("customerId", userId);
-            body.put("customerEmail", userEmail);
-            body.put("customerName", userName);
-            body.put("description", description);
-            body.put("amountKobo", amountKobo);
-            body.put("returnUrl", returnUrl);
-
-            JsonNode response = restClient.post()
-                    .uri("/api/payments/internal/charges")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-            JsonNode data = response == null ? null : response.path("data");
-            if (data == null || data.isMissingNode() || data.isNull()) {
-                log.warn("Payments init returned no data for creative request {}", requestId);
-                return Optional.empty();
-            }
-            String url = data.path("paymentUrl").asText(null);
-            if (url == null || url.isBlank()) {
-                log.warn("Payments init returned no paymentUrl for creative request {}", requestId);
-                return Optional.empty();
-            }
-            return Optional.of(new PaymentInitResult(
-                    data.path("reference").asText(null), url, data.path("status").asText(null)));
-        } catch (RuntimeException ex) {
-            log.error("Payments init failed for creative request {}: {}", requestId, ex.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    @Override
-    public Optional<PaymentInitResult> initBrandPackageCharge(UUID tenantId, String tenantSlug,
-                                                              UUID subscriptionId, UUID userId,
-                                                              String userEmail, String userName,
-                                                              long amountKobo, String description,
-                                                              String returnUrl) {
-        if (!enabled) {
-            return Optional.empty();
-        }
-        try {
-            java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<>();
-            body.put("tenantId", tenantId);
-            body.put("tenantSlug", tenantSlug);
-            body.put("brandPackageSubscriptionId", subscriptionId);
-            body.put("customerId", userId);
-            body.put("customerEmail", userEmail);
-            body.put("customerName", userName);
-            body.put("description", description);
-            body.put("amountKobo", amountKobo);
-            body.put("returnUrl", returnUrl);
-
-            JsonNode response = restClient.post()
-                    .uri("/api/payments/internal/charges")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-            JsonNode data = response == null ? null : response.path("data");
-            if (data == null || data.isMissingNode() || data.isNull()) {
-                log.warn("Payments init returned no data for brand-package subscription {}", subscriptionId);
-                return Optional.empty();
-            }
-            String url = data.path("paymentUrl").asText(null);
-            if (url == null || url.isBlank()) {
-                log.warn("Payments init returned no paymentUrl for brand-package subscription {}", subscriptionId);
-                return Optional.empty();
-            }
-            return Optional.of(new PaymentInitResult(
-                    data.path("reference").asText(null), url, data.path("status").asText(null)));
-        } catch (RuntimeException ex) {
-            log.error("Payments init failed for brand-package subscription {}: {}", subscriptionId, ex.getMessage());
             return Optional.empty();
         }
     }

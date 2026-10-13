@@ -59,7 +59,6 @@ public class InternalController {
         Payment created = paymentService.initPayment(request.tenantId(), request.tenantSlug(),
                 new PaymentService.InitPaymentInput(
                         request.orderId(), request.bookingId(),
-                        request.creativeRequestId(), request.brandPackageSubscriptionId(),
                         request.customerId(),
                         request.customerEmail(), request.customerName(), request.description(),
                         request.returnUrl(), request.amountKobo()));
